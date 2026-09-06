@@ -42,7 +42,7 @@
 
     --radius: 0.75rem;
 
-    --gradient-warm: linear-gradient(135deg, #fd7333 0%, #ff9a5c 100%);
+    --gradient-warm: linear-gradient(135deg, #fd7333 0%, #8a2f10 100%);
     --gradient-subtle: linear-gradient(180deg, #00234a 0%, #00182f 100%);
     --shadow-sm: 0 1px 2px 0 rgb(0 35 74 / 0.2);
     --shadow-md: 0 4px 12px -2px rgb(0 35 74 / 0.35);
@@ -69,6 +69,50 @@
 
   .shadow-warm {
     box-shadow: var(--shadow-warm);
+  }
+
+  .ticket-mesh {
+    background:
+      radial-gradient(ellipse 80% 60% at 0% 0%, #003d7a 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 100%, #000814 0%, transparent 55%),
+      linear-gradient(165deg, #00234a 0%, #00182f 55%, #000814 100%);
+  }
+
+  .ticket-title-gradient {
+    background: linear-gradient(118deg, #fd7333 0%, #c44e1c 48%, #8a2f10 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .ticket-ring {
+    background:
+      linear-gradient(#001326, #001326) padding-box,
+      linear-gradient(145deg, #fd7333 0%, #8a2f10 100%) border-box;
+    border: 2px solid transparent;
+  }
+
+  .ticket-card-selected {
+    background:
+      linear-gradient(135deg, rgb(253 115 51 / 0.32), rgb(74 24 8 / 0.55))
+        padding-box,
+      linear-gradient(120deg, #fd7333, #8a2f10) border-box;
+    border: 1px solid transparent;
+    box-shadow: 0 0 0 1px rgb(253 115 51 / 0.15), 0 10px 28px -12px rgb(138 47 16 / 0.7);
+  }
+
+  .buy-gradient {
+    background: linear-gradient(90deg, #fd7333, #8a2f10, #fd7333);
+    background-size: 200% 100%;
+    animation: buySheen 4s linear infinite;
+  }
+
+  .orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(70px);
+    pointer-events: none;
+    animation: orbDrift 14s ease-in-out infinite;
   }
 
   .animate-fade-in {
@@ -112,5 +156,24 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes buySheen {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes orbDrift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(6%, -8%) scale(1.12);
   }
 }

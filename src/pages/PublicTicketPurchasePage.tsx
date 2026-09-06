@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Calendar,
   Check,
-  Clock,
   Copy,
   Download,
   ImagePlus,
@@ -59,14 +58,20 @@ function formatEventWhen(
   start?: string | null,
   end?: string | null,
 ) {
-  if (!date) return { day: "Fecha a confirmar", time: null as string | null };
+  const time = start && end ? `${start}–${end}` : start || null;
+  if (!date) {
+    return { day: "Fecha a confirmar", time, dayNum: null, month: null };
+  }
   try {
     const parsed = parseISO(date);
-    const day = format(parsed, "EEEE d 'de' MMMM", { locale: es });
-    const time = start && end ? `${start}–${end}` : start || null;
-    return { day, time };
+    return {
+      day: format(parsed, "EEEE d 'de' MMMM", { locale: es }),
+      time,
+      dayNum: format(parsed, "d"),
+      month: format(parsed, "MMM", { locale: es }).replace(".", ""),
+    };
   } catch {
-    return { day: date, time: start && end ? `${start}–${end}` : null };
+    return { day: date, time, dayNum: null, month: null };
   }
 }
 
@@ -203,7 +208,8 @@ export function PublicTicketPurchasePage() {
   };
 
   return (
-    <div className="min-h-dvh bg-navy text-cream">
+    <div className="relative isolate min-h-dvh overflow-x-hidden ticket-mesh text-cream">
+      <Atmosphere />
       {loading ? (
         <p className="px-6 pt-24 text-center text-sm text-cream/55">
           Cargando evento…
@@ -279,6 +285,22 @@ export function PublicTicketPurchasePage() {
   );
 }
 
+function Atmosphere() {
+  return (
+    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+      <div className="orb left-[-8rem] top-[-6rem] h-72 w-72 bg-[#003d7a]/70" />
+      <div
+        className="orb right-[-6rem] top-24 h-64 w-64 bg-[#001326]/80"
+        style={{ animationDelay: "-4s" }}
+      />
+      <div
+        className="orb bottom-[-4rem] left-1/3 h-80 w-80 bg-[#000814]/90"
+        style={{ animationDelay: "-8s" }}
+      />
+    </div>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-5 py-10">
@@ -291,10 +313,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 function BrandMark({ name = FALLBACK_VENUE.name }: { name?: string }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-cream/10">
+      <div className="ticket-ring flex h-8 w-8 items-center justify-center rounded-md">
         <div className="h-6 w-6 bg-[url('/logo.svg')] bg-contain bg-center bg-no-repeat" />
       </div>
-      <p className="text-xs font-medium uppercase tracking-[0.18em] text-cream/60">
+      <p className="text-xs font-medium uppercase tracking-[0.18em] text-cream/70">
         {name}
       </p>
     </div>
@@ -316,7 +338,12 @@ function EventLanding({
 }: {
   catalog: EventTicketCatalog;
   venue: VenueLocation;
-  when: { day: string; time: string | null };
+  when: {
+    day: string;
+    time: string | null;
+    dayNum: string | null;
+    month: string | null;
+  };
   selectedTypeId: string | null;
   quantity: number;
   remaining: number;
@@ -336,8 +363,8 @@ function EventLanding({
       </header>
 
       <div className="mx-auto grid max-w-6xl items-start gap-0 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:gap-12 lg:px-8 lg:pt-2">
-        <div className="relative mx-auto w-full max-w-lg overflow-hidden bg-[#00182f] lg:sticky lg:top-6 lg:mx-0 lg:max-w-none lg:rounded-2xl lg:shadow-lg">
-          <div className="aspect-[4/5] w-full">
+        <div className="ticket-ring relative mx-auto w-full max-w-lg overflow-hidden shadow-warm lg:sticky lg:top-6 lg:mx-0 lg:max-w-none lg:rounded-[1.35rem]">
+          <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
             {flyer ? (
               <img
                 src={flyer}
@@ -345,8 +372,8 @@ function EventLanding({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full items-end bg-gradient-to-br from-navy via-[#00182f] to-[#001326] px-5 pb-8">
-                <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-cream/50">
+              <div className="flex h-full items-end bg-gradient-to-br from-orange to-[#4a1808] px-5 pb-8">
+                <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-cream/70">
                   {VENUE_KIND}
                 </p>
               </div>
@@ -358,25 +385,51 @@ function EventLanding({
           <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-orange">
             {VENUE_KIND}
           </p>
-          <h1 className="mt-2 text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl lg:text-5xl">
+          <h1 className="ticket-title-gradient mt-2 text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl lg:text-5xl">
             {catalog.event_name}
           </h1>
 
-          <div className="mt-6 flex flex-col gap-2.5 text-sm text-cream/75 sm:flex-row sm:flex-wrap sm:gap-x-6">
-            <p className="flex items-center gap-2 capitalize">
-              <Calendar className="h-4 w-4 shrink-0 text-orange" />
-              {when.day}
-            </p>
-            {when.time && (
-              <p className="flex items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-orange" />
-                {when.time}
-              </p>
-            )}
-            <p className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 shrink-0 text-orange" />
-              {venueAddressLine(venue)}
-            </p>
+          <div className="mt-7 space-y-4">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl border border-orange/25 bg-gradient-to-b from-orange/20 to-[#4a1808]/50">
+                {when.dayNum && when.month ? (
+                  <>
+                    <span className="text-[9px] font-semibold uppercase leading-none tracking-wider text-orange">
+                      {when.month}
+                    </span>
+                    <span className="mt-0.5 text-lg font-semibold leading-none">
+                      {when.dayNum}
+                    </span>
+                  </>
+                ) : (
+                  <Calendar className="h-5 w-5 text-orange" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium capitalize leading-tight">{when.day}</p>
+                {when.time && (
+                  <p className="mt-0.5 text-sm text-cream/55">{when.time}</p>
+                )}
+              </div>
+            </div>
+
+            <a
+              href={mapsDirectionsUrl(venue)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3.5 rounded-xl transition-colors hover:bg-cream/[0.04]"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-orange/25 bg-gradient-to-b from-orange/20 to-[#4a1808]/50">
+                <MapPin className="h-5 w-5 text-orange" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium leading-tight">{venue.name}</p>
+                <p className="mt-0.5 text-sm text-cream/55">
+                  {venueAddressLine(venue)}
+                </p>
+              </div>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-cream/35" />
+            </a>
           </div>
 
           <section className="mt-8 lg:mt-10">
@@ -395,11 +448,11 @@ function EventLanding({
                     disabled={soldOut}
                     onClick={() => onSelect(type)}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left transition-colors",
+                      "flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left transition-colors",
                       soldOut && "cursor-not-allowed opacity-40",
                       isSelected
-                        ? "border-orange bg-orange/15"
-                        : "border-cream/15 bg-cream/[0.04] hover:bg-cream/[0.08]",
+                        ? "ticket-card-selected"
+                        : "border border-cream/15 bg-gradient-to-r from-orange/[0.08] to-[#4a1808]/20 hover:from-orange/15",
                     )}
                   >
                     <div>
@@ -417,7 +470,7 @@ function EventLanding({
             </div>
 
             {selected && remaining > 0 && (
-              <div className="mt-3 flex items-center justify-between rounded-2xl border border-cream/15 bg-cream/[0.04] px-4 py-3">
+              <div className="mt-3 flex items-center justify-between rounded-2xl border border-cream/15 bg-gradient-to-r from-orange/[0.1] to-[#4a1808]/25 px-4 py-3">
                 <span className="text-sm text-cream/65">Cantidad</span>
                 <div className="flex items-center gap-3">
                   <Button
@@ -454,19 +507,19 @@ function EventLanding({
         </div>
       </div>
 
-      <footer className="fixed inset-x-0 bottom-0 border-t border-cream/10 bg-navy/95 px-5 py-3 backdrop-blur-md">
+      <footer className="fixed inset-x-0 bottom-0 border-t border-orange/25 bg-navy/70 px-5 py-3 shadow-[0_-20px_50px_-20px_rgb(253_115_51_/_0.35)] backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-3 lg:px-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] uppercase tracking-wide text-cream/45">
               {selected ? `${quantity} × ${selected.name}` : "Desde"}
             </p>
-            <p className="text-xl font-semibold tabular-nums lg:text-2xl">
+            <p className="ticket-title-gradient text-xl font-semibold tabular-nums lg:text-2xl">
               {formatArsMoney(selected ? total : fromPrice ?? 0)}
             </p>
           </div>
           <Button
             size="lg"
-            className="h-12 min-w-[8.5rem] px-6 text-base lg:min-w-[10rem] lg:px-8"
+            className="buy-gradient h-12 min-w-[8.5rem] px-6 text-base text-cream hover:opacity-95 lg:min-w-[10rem] lg:px-8"
             disabled={!selectedTypeId || remaining <= 0}
             onClick={onBuy}
           >
@@ -484,7 +537,7 @@ function VenueSection({ venue }: { venue: VenueLocation }) {
       <h2 className="text-xs font-medium uppercase tracking-[0.2em] text-cream/45">
         Ubicación
       </h2>
-      <div className="mt-3 overflow-hidden rounded-2xl border border-cream/15 bg-cream/[0.04]">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-orange/20 bg-gradient-to-br from-orange/15 to-[#4a1808]/40">
         <div className="flex items-start justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
             <p className="font-medium">{venue.name}</p>
@@ -640,7 +693,7 @@ function EventCheckout({
       </main>
 
       {step !== "done" && (
-        <footer className="fixed inset-x-0 bottom-0 border-t border-cream/10 bg-navy/95 px-5 py-3 backdrop-blur-md">
+        <footer className="fixed inset-x-0 bottom-0 border-t border-orange/25 bg-navy/70 px-5 py-3 shadow-[0_-20px_50px_-20px_rgb(253_115_51_/_0.35)] backdrop-blur-md">
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="min-w-0 flex-1">
               {total > 0 && (
@@ -653,18 +706,27 @@ function EventCheckout({
               )}
             </div>
             {step === "buyer" && (
-              <Button size="lg" onClick={onContinueBuyer}>
+              <Button
+                size="lg"
+                className="buy-gradient text-cream hover:opacity-95"
+                onClick={onContinueBuyer}
+              >
                 Continuar
               </Button>
             )}
             {step === "pay" && (
-              <Button size="lg" onClick={onContinuePay}>
+              <Button
+                size="lg"
+                className="buy-gradient text-cream hover:opacity-95"
+                onClick={onContinuePay}
+              >
                 Ya transferí
               </Button>
             )}
             {step === "receipt" && (
               <Button
                 size="lg"
+                className="buy-gradient text-cream hover:opacity-95"
                 disabled={!receiptFile || submitting}
                 onClick={onSubmit}
               >
