@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Terzo: #00234A navy, #FD7333 orange, #F1ECD9 cream */
+  :root,
+  .dark {
+    --background: 212 100% 15%;
+    --foreground: 47 46% 90%;
+
+    --card: 212 72% 18%;
+    --card-foreground: 47 46% 90%;
+
+    --popover: 212 72% 18%;
+    --popover-foreground: 47 46% 90%;
+
+    --primary: 19 98% 60%;
+    --primary-foreground: 212 100% 15%;
+
+    --secondary: 212 55% 22%;
+    --secondary-foreground: 47 46% 90%;
+
+    --muted: 212 55% 22%;
+    --muted-foreground: 47 30% 78%;
+
+    --accent: 212 55% 22%;
+    --accent-foreground: 19 98% 60%;
+
+    --destructive: 0 72% 56%;
+    --destructive-foreground: 47 46% 90%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 212 100% 15%;
+
+    --warning: 45 93% 50%;
+    --warning-foreground: 212 100% 15%;
+
+    --border: 47 30% 80%;
+    --input: 212 40% 28%;
+    --ring: 19 98% 60%;
+
+    --radius: 0.75rem;
+
+    --gradient-warm: linear-gradient(135deg, #fd7333 0%, #ff9a5c 100%);
+    --gradient-subtle: linear-gradient(180deg, #00234a 0%, #00182f 100%);
+    --shadow-sm: 0 1px 2px 0 rgb(0 35 74 / 0.2);
+    --shadow-md: 0 4px 12px -2px rgb(0 35 74 / 0.35);
+    --shadow-lg: 0 12px 24px -8px rgb(0 35 74 / 0.45);
+    --shadow-warm: 0 4px 14px -3px rgb(253 115 51 / 0.35);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .gradient-warm {
+    background: var(--gradient-warm);
+  }
+
+  .shadow-warm {
+    box-shadow: var(--shadow-warm);
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
