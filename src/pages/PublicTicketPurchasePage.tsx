@@ -42,8 +42,6 @@ import {
 } from "@/lib/venueMaps";
 import { cn, formatArsMoney } from "@/lib/utils";
 
-const VENUE_KIND = "Club Cultural";
-
 type Phase = "landing" | "checkout";
 type CheckoutStep = "buyer" | "pay" | "receipt" | "done";
 
@@ -53,19 +51,45 @@ const CHECKOUT_STEPS: { id: CheckoutStep; label: string }[] = [
   { id: "receipt", label: "Comprobante" },
 ];
 
+function capitalizeFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatClock(raw?: string | null) {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const twelveHour = trimmed.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (twelveHour) {
+    return `${Number(twelveHour[1])}:${twelveHour[2]}${twelveHour[3].toLowerCase()}`;
+  }
+  const twentyFour = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!twentyFour) return trimmed;
+  const hour24 = Number(twentyFour[1]);
+  const minutes = twentyFour[2];
+  const suffix = hour24 >= 12 ? "pm" : "am";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${minutes}${suffix}`;
+}
+
 function formatEventWhen(
   date: string | null,
   start?: string | null,
   end?: string | null,
 ) {
-  const time = start && end ? `${start}–${end}` : start || null;
+  const startClock = formatClock(start);
+  const endClock = formatClock(end);
+  const time =
+    startClock && endClock
+      ? `${startClock} - ${endClock}`
+      : startClock || null;
   if (!date) {
     return { day: "Fecha a confirmar", time, dayNum: null, month: null };
   }
   try {
     const parsed = parseISO(date);
     return {
-      day: format(parsed, "EEEE d 'de' MMMM", { locale: es }),
+      day: capitalizeFirst(format(parsed, "EEEE d 'de' MMMM", { locale: es })),
       time,
       dayNum: format(parsed, "d"),
       month: format(parsed, "MMM", { locale: es }).replace(".", ""),
@@ -132,7 +156,9 @@ export function PublicTicketPurchasePage() {
     };
   }, [slug]);
 
-  const selectedType = catalog?.ticket_types.find((t) => t.id === selectedTypeId);
+  const selectedType = catalog?.ticket_types.find(
+    (t) => t.id === selectedTypeId,
+  );
   const remaining = selectedType ? remainingQuantity(selectedType) : 0;
   const total =
     selectedType && quantity > 0 ? selectedType.price * quantity : 0;
@@ -174,7 +200,8 @@ export function PublicTicketPurchasePage() {
   };
 
   const handleSubmit = async () => {
-    if (!slug || !catalog || !selectedType || !receiptFile || submitting) return;
+    if (!slug || !catalog || !selectedType || !receiptFile || submitting)
+      return;
     setSubmitting(true);
     try {
       const ticket = await purchasePublicTicket({
@@ -287,7 +314,10 @@ export function PublicTicketPurchasePage() {
 
 function Atmosphere() {
   return (
-    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+    <div
+      className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+      aria-hidden
+    >
       <div className="orb left-[-8rem] top-[-6rem] h-72 w-72 bg-[#003d7a]/70" />
       <div
         className="orb right-[-6rem] top-24 h-64 w-64 bg-[#001326]/80"
@@ -310,16 +340,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function BrandMark({ name = FALLBACK_VENUE.name }: { name?: string }) {
+function BrandMark() {
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="ticket-ring flex h-8 w-8 items-center justify-center rounded-md">
-        <div className="h-6 w-6 bg-[url('/logo.svg')] bg-contain bg-center bg-no-repeat" />
-      </div>
-      <p className="text-xs font-medium uppercase tracking-[0.18em] text-cream/70">
-        {name}
-      </p>
-    </div>
+    <img
+      src="/logo.svg"
+      alt="Terzo Posto"
+      className="h-9 w-auto shrink-0 sm:h-11"
+    />
   );
 }
 
@@ -358,43 +385,37 @@ function EventLanding({
 
   return (
     <div className="min-h-dvh pb-28">
-      <header className="mx-auto flex max-w-6xl items-center px-5 py-4 lg:px-8">
-        <BrandMark name={venue.name} />
-      </header>
-
-      <div className="mx-auto grid max-w-6xl items-start gap-0 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:gap-12 lg:px-8 lg:pt-2">
-        <div className="ticket-ring relative mx-auto w-full max-w-lg overflow-hidden shadow-warm lg:sticky lg:top-6 lg:mx-0 lg:max-w-none lg:rounded-[1.35rem]">
-          <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
-            {flyer ? (
-              <img
-                src={flyer}
-                alt={catalog.event_name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-end bg-gradient-to-br from-orange to-[#4a1808] px-5 pb-8">
-                <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-cream/70">
-                  {VENUE_KIND}
-                </p>
+      <div className="mx-auto grid max-w-6xl gap-6 px-5 pt-4 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-stretch lg:gap-12 lg:px-8 lg:pt-5">
+        <div className="flex flex-col">
+          <BrandMark />
+          <div className="mt-4 flex min-h-0 flex-1 items-center">
+            <div className="relative mx-auto w-full max-w-lg overflow-hidden rounded-none border border-cream/15 lg:mx-0 lg:max-w-none lg:rounded-[1.35rem]">
+              <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
+                {flyer ? (
+                  <img
+                    src={flyer}
+                    alt={catalog.event_name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full bg-navy" />
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
-        <div className="px-5 pt-6 lg:flex lg:flex-col lg:px-0 lg:pt-2">
-          <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-orange">
-            {VENUE_KIND}
-          </p>
-          <h1 className="ticket-title-gradient mt-2 text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl lg:text-5xl">
+        <div className="lg:flex lg:flex-col">
+          <h1 className="font-display text-3xl font-semibold leading-[1.08] tracking-tight text-orange sm:text-4xl lg:text-5xl">
             {catalog.event_name}
           </h1>
 
           <div className="mt-7 space-y-4">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl border border-orange/25 bg-gradient-to-b from-orange/20 to-[#4a1808]/50">
+              <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-orange text-cream">
                 {when.dayNum && when.month ? (
                   <>
-                    <span className="text-[9px] font-semibold uppercase leading-none tracking-wider text-orange">
+                    <span className="text-[9px] font-semibold uppercase leading-none tracking-wider">
                       {when.month}
                     </span>
                     <span className="mt-0.5 text-lg font-semibold leading-none">
@@ -402,11 +423,11 @@ function EventLanding({
                     </span>
                   </>
                 ) : (
-                  <Calendar className="h-5 w-5 text-orange" />
+                  <Calendar className="h-5 w-5" />
                 )}
               </div>
               <div className="min-w-0">
-                <p className="font-medium capitalize leading-tight">{when.day}</p>
+                <p className="font-medium leading-tight">{when.day}</p>
                 {when.time && (
                   <p className="mt-0.5 text-sm text-cream/55">{when.time}</p>
                 )}
@@ -419,8 +440,8 @@ function EventLanding({
               rel="noreferrer"
               className="flex items-center gap-3.5 rounded-xl transition-colors hover:bg-cream/[0.04]"
             >
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-orange/25 bg-gradient-to-b from-orange/20 to-[#4a1808]/50">
-                <MapPin className="h-5 w-5 text-orange" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange text-cream">
+                <MapPin className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-medium leading-tight">{venue.name}</p>
@@ -442,84 +463,94 @@ function EventLanding({
                 const soldOut = left <= 0;
                 const isSelected = type.id === selectedTypeId;
                 return (
-                  <button
+                  <div
                     key={type.id}
-                    type="button"
-                    disabled={soldOut}
-                    onClick={() => onSelect(type)}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left transition-colors",
-                      soldOut && "cursor-not-allowed opacity-40",
+                      "flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3.5",
+                      soldOut && "opacity-40",
                       isSelected
-                        ? "ticket-card-selected"
-                        : "border border-cream/15 bg-gradient-to-r from-orange/[0.08] to-[#4a1808]/20 hover:from-orange/15",
+                        ? "bg-orange text-navy"
+                        : "cursor-pointer border border-cream/15 bg-cream/[0.04] hover:bg-cream/[0.08]",
                     )}
+                    onClick={() => {
+                      if (!soldOut) onSelect(type);
+                    }}
                   >
-                    <div>
+                    <button
+                      type="button"
+                      disabled={soldOut}
+                      onClick={() => onSelect(type)}
+                      className={cn(
+                        "min-w-0 flex-1 text-left",
+                        soldOut ? "cursor-not-allowed" : undefined,
+                      )}
+                    >
                       <p className="font-medium">{type.name}</p>
                       {soldOut && (
                         <p className="mt-0.5 text-xs text-cream/50">Agotado</p>
                       )}
+                    </button>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {isSelected && !soldOut && (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 border-navy/20 bg-transparent text-navy hover:bg-navy/10"
+                            disabled={quantity <= 1}
+                            onClick={() =>
+                              onQuantityChange(Math.max(1, quantity - 1))
+                            }
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                          <span className="w-5 text-center text-base font-semibold tabular-nums">
+                            {quantity}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 border-navy/20 bg-transparent text-navy hover:bg-navy/10"
+                            disabled={quantity >= remaining}
+                            onClick={() =>
+                              onQuantityChange(
+                                Math.min(remaining, quantity + 1),
+                              )
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                      <p className="text-lg font-semibold tabular-nums">
+                        {formatArsMoney(type.price)}
+                      </p>
                     </div>
-                    <p className="text-lg font-semibold tabular-nums">
-                      {formatArsMoney(type.price)}
-                    </p>
-                  </button>
+                  </div>
                 );
               })}
             </div>
-
-            {selected && remaining > 0 && (
-              <div className="mt-3 flex items-center justify-between rounded-2xl border border-cream/15 bg-gradient-to-r from-orange/[0.1] to-[#4a1808]/25 px-4 py-3">
-                <span className="text-sm text-cream/65">Cantidad</span>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-10 w-10 border-cream/20 bg-transparent text-cream hover:bg-cream/10"
-                    disabled={quantity <= 1}
-                    onClick={() => onQuantityChange(Math.max(1, quantity - 1))}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <span className="w-6 text-center text-lg font-semibold tabular-nums">
-                    {quantity}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-10 w-10 border-cream/20 bg-transparent text-cream hover:bg-cream/10"
-                    disabled={quantity >= remaining}
-                    onClick={() =>
-                      onQuantityChange(Math.min(remaining, quantity + 1))
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </section>
 
           <VenueSection venue={venue} />
         </div>
       </div>
 
-      <footer className="fixed inset-x-0 bottom-0 border-t border-orange/25 bg-navy/70 px-5 py-3 shadow-[0_-20px_50px_-20px_rgb(253_115_51_/_0.35)] backdrop-blur-md">
+      <footer className="ticket-footer fixed inset-x-0 bottom-0 px-5 py-3">
         <div className="mx-auto flex max-w-6xl items-center gap-3 lg:px-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] uppercase tracking-wide text-cream/45">
+            <p className="text-[11px] uppercase tracking-wide text-navy/70">
               {selected ? `${quantity} × ${selected.name}` : "Desde"}
             </p>
-            <p className="ticket-title-gradient text-xl font-semibold tabular-nums lg:text-2xl">
-              {formatArsMoney(selected ? total : fromPrice ?? 0)}
+            <p className="text-xl font-semibold tabular-nums text-navy lg:text-2xl">
+              {formatArsMoney(selected ? total : (fromPrice ?? 0))}
             </p>
           </div>
           <Button
             size="lg"
-            className="buy-gradient h-12 min-w-[8.5rem] px-6 text-base text-cream hover:opacity-95 lg:min-w-[10rem] lg:px-8"
+            className="h-12 min-w-[8.5rem] bg-navy px-6 text-base text-cream hover:bg-navy/90 lg:min-w-[10rem] lg:px-8"
             disabled={!selectedTypeId || remaining <= 0}
             onClick={onBuy}
           >
@@ -537,7 +568,7 @@ function VenueSection({ venue }: { venue: VenueLocation }) {
       <h2 className="text-xs font-medium uppercase tracking-[0.2em] text-cream/45">
         Ubicación
       </h2>
-      <div className="mt-3 overflow-hidden rounded-2xl border border-orange/20 bg-gradient-to-br from-orange/15 to-[#4a1808]/40">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-cream/15 bg-cream/[0.04]">
         <div className="flex items-start justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
             <p className="font-medium">{venue.name}</p>
@@ -636,7 +667,7 @@ function EventCheckout({
           <p className="text-[11px] uppercase tracking-[0.18em] text-cream/45">
             {venue.name}
           </p>
-          <h1 className="truncate text-base font-semibold">
+          <h1 className="font-display truncate text-base font-semibold">
             {catalog.event_name}
           </h1>
         </div>
@@ -693,13 +724,13 @@ function EventCheckout({
       </main>
 
       {step !== "done" && (
-        <footer className="fixed inset-x-0 bottom-0 border-t border-orange/25 bg-navy/70 px-5 py-3 shadow-[0_-20px_50px_-20px_rgb(253_115_51_/_0.35)] backdrop-blur-md">
+        <footer className="ticket-footer fixed inset-x-0 bottom-0 px-5 py-3">
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="min-w-0 flex-1">
               {total > 0 && (
-                <p className="text-sm text-cream/55">
+                <p className="text-sm text-navy/70">
                   Total{" "}
-                  <span className="font-semibold text-cream">
+                  <span className="font-semibold text-navy">
                     {formatArsMoney(total)}
                   </span>
                 </p>
@@ -708,7 +739,7 @@ function EventCheckout({
             {step === "buyer" && (
               <Button
                 size="lg"
-                className="buy-gradient text-cream hover:opacity-95"
+                className="bg-navy text-cream hover:bg-navy/90"
                 onClick={onContinueBuyer}
               >
                 Continuar
@@ -717,7 +748,7 @@ function EventCheckout({
             {step === "pay" && (
               <Button
                 size="lg"
-                className="buy-gradient text-cream hover:opacity-95"
+                className="bg-navy text-cream hover:bg-navy/90"
                 onClick={onContinuePay}
               >
                 Ya transferí
@@ -726,7 +757,7 @@ function EventCheckout({
             {step === "receipt" && (
               <Button
                 size="lg"
-                className="buy-gradient text-cream hover:opacity-95"
+                className="bg-navy text-cream hover:bg-navy/90"
                 disabled={!receiptFile || submitting}
                 onClick={onSubmit}
               >
@@ -779,7 +810,9 @@ function BuyerStep({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Tus datos</h2>
+        <h2 className="font-display text-2xl font-semibold tracking-tight">
+          Tus datos
+        </h2>
         <p className="mt-1 text-sm text-cream/55">
           Los usamos para contactarte si hace falta confirmar el pago.
         </p>
@@ -841,7 +874,7 @@ function PayStep({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 className="font-display text-2xl font-semibold tracking-tight">
           Transferí el pago
         </h2>
         <p className="mt-1 text-sm text-cream/55">
@@ -859,7 +892,9 @@ function PayStep({
           Alias
         </p>
         <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xl font-semibold tracking-wide">{TRANSFER_ALIAS}</p>
+          <p className="text-xl font-semibold tracking-wide">
+            {TRANSFER_ALIAS}
+          </p>
           <Button
             type="button"
             variant="outline"
@@ -898,7 +933,7 @@ function ReceiptStep({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 className="font-display text-2xl font-semibold tracking-tight">
           Subí el comprobante
         </h2>
         <p className="mt-1 text-sm text-cream/55">
@@ -955,7 +990,9 @@ function DoneStep({
   const canvasId = "ticket-qr-canvas";
 
   const saveQr = async () => {
-    const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+    const canvas = document.getElementById(
+      canvasId,
+    ) as HTMLCanvasElement | null;
     if (!canvas) return;
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/png"),
@@ -990,7 +1027,7 @@ function DoneStep({
         <Check className="h-6 w-6" />
       </div>
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 className="font-display text-2xl font-semibold tracking-tight">
           ¡Listo, ya está tu entrada!
         </h2>
         <p className="mt-2 text-sm text-cream/55">
@@ -1015,8 +1052,8 @@ function DoneStep({
         Guardar QR
       </Button>
       <p className="rounded-xl bg-amber-500/15 px-3 py-2.5 text-sm text-amber-200">
-        La entrada queda pendiente de confirmación de pago. Guardá el QR: lo
-        vas a necesitar en la puerta.
+        La entrada queda pendiente de confirmación de pago. Guardá el QR: lo vas
+        a necesitar en la puerta.
       </p>
     </div>
   );
