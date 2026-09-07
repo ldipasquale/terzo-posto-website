@@ -80,9 +80,7 @@ function formatEventWhen(
   const startClock = formatClock(start);
   const endClock = formatClock(end);
   const time =
-    startClock && endClock
-      ? `${startClock} - ${endClock}`
-      : startClock || null;
+    startClock && endClock ? `${startClock} - ${endClock}` : startClock || null;
   if (!date) {
     return { day: "Fecha a confirmar", time, dayNum: null, month: null };
   }
@@ -235,7 +233,7 @@ export function PublicTicketPurchasePage() {
   };
 
   return (
-    <div className="relative isolate min-h-dvh overflow-x-hidden ticket-mesh text-cream">
+    <div className="relative isolate min-h-dvh ticket-mesh text-cream">
       <Atmosphere />
       {loading ? (
         <p className="px-6 pt-24 text-center text-sm text-cream/55">
@@ -350,6 +348,32 @@ function BrandMark() {
   );
 }
 
+const HARDCODED_EVENT_DETAIL = true;
+
+function EventDetail() {
+  return (
+    <div className="mx-auto mt-5 max-w-lg space-y-4 text-sm leading-relaxed text-cream/70 lg:mx-0 lg:max-w-none">
+      <p>
+        Este sábado 29 de agosto abrimos las puertas a las 20hs. Vení a comer,
+        tomar algo y anotate con tu compañero de toda la vida (o te encontramos
+        compañero) para el torneo.
+      </p>
+      <div>
+        <p className="font-display font-semibold text-cream">🏆 PREMIOS</p>
+        <p className="mt-1">$100.000 para la pareja campeona</p>
+        <p>Consumiciones para el 2º y 3º puesto</p>
+      </div>
+      <div>
+        <p className="font-display font-semibold text-cream">⭐ FORMATO</p>
+        <p className="mt-1">
+          Eliminación directa, 16 equipos. Se llenan los cupos rápido — para mas
+          información e inscripción, tenés el link en nuestra bio
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function EventLanding({
   catalog,
   venue,
@@ -382,37 +406,48 @@ function EventLanding({
 }) {
   const flyer = publicAssetSrc(catalog.flyer_url);
   const selected = catalog.ticket_types.find((t) => t.id === selectedTypeId);
+  const hasDetail = HARDCODED_EVENT_DETAIL;
 
   return (
     <div className="min-h-dvh pb-28">
-      <div className="mx-auto grid max-w-6xl gap-6 px-5 pt-4 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-stretch lg:gap-12 lg:px-8 lg:pt-5">
+      <div className="mx-auto grid max-w-5xl gap-5 px-4 pt-4 lg:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)] lg:items-stretch lg:gap-8 lg:px-6 lg:pt-5">
         <div className="flex flex-col">
           <BrandMark />
           <div className="mt-4 flex min-h-0 flex-1 items-center">
-            <div className="relative mx-auto w-full max-w-lg overflow-hidden rounded-none border border-cream/15 lg:mx-0 lg:max-w-none lg:rounded-[1.35rem]">
-              <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
-                {flyer ? (
-                  <img
-                    src={flyer}
-                    alt={catalog.event_name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full bg-navy" />
+            <div className="w-full">
+              <div
+                className={cn(
+                  "relative mx-auto overflow-hidden rounded-none border border-cream/15 lg:rounded-[1.35rem]",
+                  hasDetail
+                    ? "w-4/5 max-w-lg"
+                    : "w-full max-w-lg lg:max-w-none",
                 )}
+              >
+                <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
+                  {flyer ? (
+                    <img
+                      src={flyer}
+                      alt={catalog.event_name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full bg-navy" />
+                  )}
+                </div>
               </div>
+              {hasDetail ? <EventDetail /> : null}
             </div>
           </div>
         </div>
 
-        <div className="lg:flex lg:flex-col">
-          <h1 className="font-display text-3xl font-semibold leading-[1.08] tracking-tight text-orange sm:text-4xl lg:text-5xl">
+        <div className="min-w-0 overflow-visible lg:flex lg:flex-col">
+          <h1 className="font-display text-3xl font-semibold uppercase leading-[1.2] tracking-tight text-orange sm:text-4xl lg:text-[2.85rem] lg:leading-[1.18]">
             {catalog.event_name}
           </h1>
 
-          <div className="mt-7 space-y-4">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-orange text-cream">
+          <div className="mt-6 space-y-3.5">
+            <div className="flex items-center gap-3">
+              <div className="ticket-orange flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl text-cream">
                 {when.dayNum && when.month ? (
                   <>
                     <span className="text-[9px] font-semibold uppercase leading-none tracking-wider">
@@ -438,22 +473,24 @@ function EventLanding({
               href={mapsDirectionsUrl(venue)}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3.5 rounded-xl transition-colors hover:bg-cream/[0.04]"
+              className="flex items-center gap-3 rounded-xl transition-colors hover:bg-cream/[0.04]"
             >
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange text-cream">
+              <div className="ticket-orange flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-cream">
                 <MapPin className="h-5 w-5" />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium leading-tight">{venue.name}</p>
+              <div className="min-w-0">
+                <p className="inline-flex items-center gap-1.5 font-medium leading-tight">
+                  {venue.name}
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-cream/45" />
+                </p>
                 <p className="mt-0.5 text-sm text-cream/55">
                   {venueAddressLine(venue)}
                 </p>
               </div>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-cream/35" />
             </a>
           </div>
 
-          <section className="mt-8 lg:mt-10">
+          <section className="mt-7 lg:mt-8">
             <h2 className="text-xs font-medium uppercase tracking-[0.2em] text-cream/45">
               Entradas
             </h2>
@@ -466,10 +503,10 @@ function EventLanding({
                   <div
                     key={type.id}
                     className={cn(
-                      "flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3.5",
+                      "flex w-full items-center justify-between gap-2.5 rounded-2xl px-3.5 py-3",
                       soldOut && "opacity-40",
                       isSelected
-                        ? "bg-orange text-navy"
+                        ? "ticket-orange text-navy"
                         : "cursor-pointer border border-cream/15 bg-cream/[0.04] hover:bg-cream/[0.08]",
                     )}
                     onClick={() => {
@@ -485,19 +522,21 @@ function EventLanding({
                         soldOut ? "cursor-not-allowed" : undefined,
                       )}
                     >
-                      <p className="font-medium">{type.name}</p>
+                      <p className={isSelected ? "font-bold" : "font-medium"}>
+                        {type.name}
+                      </p>
                       {soldOut && (
                         <p className="mt-0.5 text-xs text-cream/50">Agotado</p>
                       )}
                     </button>
-                    <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-2">
                       {isSelected && !soldOut && (
                         <div className="flex items-center gap-1.5">
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="icon"
-                            className="h-8 w-8 border-navy/20 bg-transparent text-navy hover:bg-navy/10"
+                            className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
                             disabled={quantity <= 1}
                             onClick={() =>
                               onQuantityChange(Math.max(1, quantity - 1))
@@ -505,14 +544,14 @@ function EventLanding({
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </Button>
-                          <span className="w-5 text-center text-base font-semibold tabular-nums">
+                          <span className="w-5 text-center text-base font-bold tabular-nums">
                             {quantity}
                           </span>
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="icon"
-                            className="h-8 w-8 border-navy/20 bg-transparent text-navy hover:bg-navy/10"
+                            className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
                             disabled={quantity >= remaining}
                             onClick={() =>
                               onQuantityChange(
@@ -524,7 +563,12 @@ function EventLanding({
                           </Button>
                         </div>
                       )}
-                      <p className="text-lg font-semibold tabular-nums">
+                      <p
+                        className={cn(
+                          "text-lg tabular-nums",
+                          isSelected ? "font-bold" : "font-semibold",
+                        )}
+                      >
                         {formatArsMoney(type.price)}
                       </p>
                     </div>
@@ -538,23 +582,23 @@ function EventLanding({
         </div>
       </div>
 
-      <footer className="ticket-footer fixed inset-x-0 bottom-0 px-5 py-3">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 lg:px-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] uppercase tracking-wide text-navy/70">
+      <footer className="ticket-footer fixed inset-x-0 bottom-0 px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-end gap-3 lg:px-3">
+          <div className="min-w-0 text-right">
+            <p className="text-[11px] uppercase tracking-wide text-cream/55">
               {selected ? `${quantity} × ${selected.name}` : "Desde"}
             </p>
-            <p className="text-xl font-semibold tabular-nums text-navy lg:text-2xl">
+            <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
               {formatArsMoney(selected ? total : (fromPrice ?? 0))}
             </p>
           </div>
           <Button
             size="lg"
-            className="h-12 min-w-[8.5rem] bg-navy px-6 text-base text-cream hover:bg-navy/90 lg:min-w-[10rem] lg:px-8"
+            className="ticket-orange h-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90 lg:px-8"
             disabled={!selectedTypeId || remaining <= 0}
             onClick={onBuy}
           >
-            Comprar
+            Comprar entradas
           </Button>
         </div>
       </footer>
@@ -569,7 +613,7 @@ function VenueSection({ venue }: { venue: VenueLocation }) {
         Ubicación
       </h2>
       <div className="mt-3 overflow-hidden rounded-2xl border border-cream/15 bg-cream/[0.04]">
-        <div className="flex items-start justify-between gap-4 px-4 py-3">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
             <p className="font-medium">{venue.name}</p>
             <p className="mt-0.5 text-sm text-cream/55">
@@ -728,9 +772,9 @@ function EventCheckout({
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="min-w-0 flex-1">
               {total > 0 && (
-                <p className="text-sm text-navy/70">
+                <p className="text-sm text-cream/55">
                   Total{" "}
-                  <span className="font-semibold text-navy">
+                  <span className="font-semibold text-cream">
                     {formatArsMoney(total)}
                   </span>
                 </p>
@@ -739,7 +783,7 @@ function EventCheckout({
             {step === "buyer" && (
               <Button
                 size="lg"
-                className="bg-navy text-cream hover:bg-navy/90"
+                className="ticket-orange text-navy hover:opacity-90"
                 onClick={onContinueBuyer}
               >
                 Continuar
@@ -748,7 +792,7 @@ function EventCheckout({
             {step === "pay" && (
               <Button
                 size="lg"
-                className="bg-navy text-cream hover:bg-navy/90"
+                className="ticket-orange text-navy hover:opacity-90"
                 onClick={onContinuePay}
               >
                 Ya transferí
@@ -757,7 +801,7 @@ function EventCheckout({
             {step === "receipt" && (
               <Button
                 size="lg"
-                className="bg-navy text-cream hover:bg-navy/90"
+                className="ticket-orange text-navy hover:opacity-90"
                 disabled={!receiptFile || submitting}
                 onClick={onSubmit}
               >
