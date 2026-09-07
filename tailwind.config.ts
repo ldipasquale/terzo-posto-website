@@ -6,7 +6,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["DM Sans", "system-ui", "sans-serif"],
+        sans: ["Figtree", "system-ui", "sans-serif"],
         display: ["Syne", "system-ui", "sans-serif"],
       },
       colors: {

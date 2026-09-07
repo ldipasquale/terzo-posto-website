@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { QRCodeCanvas } from "qrcode.react";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft,
   Calendar,
@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPublicEvent, purchasePublicTicket } from "@/lib/api";
+import { getPublicEvent, lookupPublicTickets, purchasePublicTicket } from "@/lib/api";
 import { publicAssetSrc } from "@/lib/media";
 import type {
   EventTicketCatalog,
@@ -28,9 +28,12 @@ import type {
   TicketType,
   VenueLocation,
 } from "@/types/eventTicket";
-import { TRANSFER_ALIAS } from "@/types/eventTicket";
+import { DEFAULT_TICKET_TRANSFER } from "@/types/eventTicket";
 import {
   isReasonableArPhone,
+  isPublicEventPast,
+  isTicketTypeSelectable,
+  isValidEmail,
   remainingQuantity,
   sortTicketTypes,
 } from "@/lib/eventTickets";
@@ -42,7 +45,7 @@ import {
 } from "@/lib/venueMaps";
 import { cn, formatArsMoney } from "@/lib/utils";
 
-type Phase = "landing" | "checkout";
+type Phase = "landing" | "checkout" | "recover";
 type CheckoutStep = "buyer" | "pay" | "receipt" | "done";
 
 const CHECKOUT_STEPS: { id: CheckoutStep; label: string }[] = [
@@ -109,9 +112,11 @@ export function PublicTicketPurchasePage() {
   const [quantity, setQuantity] = useState(1);
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerErrors, setBuyerErrors] = useState<{
     name?: string;
     phone?: string;
+    email?: string;
   }>({});
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptUrl, setReceiptUrl] = useState("");
@@ -154,6 +159,14 @@ export function PublicTicketPurchasePage() {
     };
   }, [slug]);
 
+  useEffect(() => {
+    const name = catalog?.event_name?.trim();
+    document.title = name ? `${name} · Terzo Posto` : "Terzo Posto";
+    return () => {
+      document.title = "Terzo Posto";
+    };
+  }, [catalog?.event_name]);
+
   const selectedType = catalog?.ticket_types.find(
     (t) => t.id === selectedTypeId,
   );
@@ -172,13 +185,18 @@ export function PublicTicketPurchasePage() {
     catalog?.event_start_time,
     catalog?.event_end_time,
   );
+  const salesClosed = isPublicEventPast(catalog?.event_date);
 
   const validateBuyer = () => {
-    const next: { name?: string; phone?: string } = {};
+    const next: { name?: string; phone?: string; email?: string } = {};
     if (!buyerName.trim()) next.name = "Ingresá tu nombre";
     if (!buyerPhone.trim()) next.phone = "Ingresá tu teléfono";
     else if (!isReasonableArPhone(buyerPhone)) {
       next.phone = "Revisá el número (ej. 11 1234-5678)";
+    }
+    if (!buyerEmail.trim()) next.email = "Ingresá tu email";
+    else if (!isValidEmail(buyerEmail)) {
+      next.email = "Revisá el email";
     }
     setBuyerErrors(next);
     return Object.keys(next).length === 0;
@@ -208,6 +226,7 @@ export function PublicTicketPurchasePage() {
         quantity,
         buyer_name: buyerName,
         buyer_phone: buyerPhone,
+        buyer_email: buyerEmail.trim().toLowerCase(),
         receipt: receiptFile,
       });
       setCreatedTicket(ticket);
@@ -233,7 +252,7 @@ export function PublicTicketPurchasePage() {
   };
 
   return (
-    <div className="relative isolate min-h-dvh ticket-mesh text-cream">
+    <div className="relative min-h-dvh ticket-mesh text-cream">
       <Atmosphere />
       {loading ? (
         <p className="px-6 pt-24 text-center text-sm text-cream/55">
@@ -247,17 +266,25 @@ export function PublicTicketPurchasePage() {
         <Shell>
           <UnavailableState missing={!catalog} />
         </Shell>
-      ) : phase === "landing" ? (
+      ) : phase === "recover" ? (
+        <RecoverTicket
+          slug={slug!}
+          eventName={catalog.event_name}
+          onBack={() => setPhase("landing")}
+        />
+      ) : phase === "landing" || salesClosed ? (
         <EventLanding
           catalog={catalog}
           venue={catalog.venue ?? FALLBACK_VENUE}
           when={when}
+          salesClosed={salesClosed}
           selectedTypeId={selectedTypeId}
           quantity={quantity}
           remaining={remaining}
           total={total}
           fromPrice={fromPrice}
           onSelect={(type) => {
+            if (salesClosed) return;
             const left = remainingQuantity(type);
             if (left <= 0) return;
             setSelectedTypeId(type.id);
@@ -265,9 +292,13 @@ export function PublicTicketPurchasePage() {
           }}
           onQuantityChange={setQuantity}
           onBuy={() => {
-            if (!selectedTypeId || remaining <= 0) return;
+            if (salesClosed || !selectedTypeId || remaining <= 0) return;
             setStep("buyer");
             setPhase("checkout");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          onRecover={() => {
+            setPhase("recover");
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         />
@@ -281,6 +312,7 @@ export function PublicTicketPurchasePage() {
           total={total}
           buyerName={buyerName}
           buyerPhone={buyerPhone}
+          buyerEmail={buyerEmail}
           buyerErrors={buyerErrors}
           receiptUrl={receiptUrl}
           receiptName={receiptName}
@@ -296,6 +328,10 @@ export function PublicTicketPurchasePage() {
           onPhoneChange={(v) => {
             setBuyerPhone(v);
             setBuyerErrors((e) => ({ ...e, phone: undefined }));
+          }}
+          onEmailChange={(v) => {
+            setBuyerEmail(v);
+            setBuyerErrors((e) => ({ ...e, email: undefined }));
           }}
           onContinueBuyer={() => {
             if (validateBuyer()) setStep("pay");
@@ -313,7 +349,7 @@ export function PublicTicketPurchasePage() {
 function Atmosphere() {
   return (
     <div
-      className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
       aria-hidden
     >
       <div className="orb left-[-8rem] top-[-6rem] h-72 w-72 bg-[#003d7a]/70" />
@@ -343,33 +379,15 @@ function BrandMark() {
     <img
       src="/logo.svg"
       alt="Terzo Posto"
-      className="h-9 w-auto shrink-0 sm:h-11"
+      className="h-9 w-auto shrink-0 sm:h-10"
     />
   );
 }
 
-const HARDCODED_EVENT_DETAIL = true;
-
-function EventDetail() {
+function EventDetail({ text }: { text: string }) {
   return (
-    <div className="mx-auto mt-5 max-w-lg space-y-4 text-sm leading-relaxed text-cream/70 lg:mx-0 lg:max-w-none">
-      <p>
-        Este sábado 29 de agosto abrimos las puertas a las 20hs. Vení a comer,
-        tomar algo y anotate con tu compañero de toda la vida (o te encontramos
-        compañero) para el torneo.
-      </p>
-      <div>
-        <p className="font-display font-semibold text-cream">🏆 PREMIOS</p>
-        <p className="mt-1">$100.000 para la pareja campeona</p>
-        <p>Consumiciones para el 2º y 3º puesto</p>
-      </div>
-      <div>
-        <p className="font-display font-semibold text-cream">⭐ FORMATO</p>
-        <p className="mt-1">
-          Eliminación directa, 16 equipos. Se llenan los cupos rápido — para mas
-          información e inscripción, tenés el link en nuestra bio
-        </p>
-      </div>
+    <div className="mx-auto max-w-lg whitespace-pre-wrap text-sm leading-relaxed text-cream/70 lg:mx-0 lg:max-w-none">
+      {text}
     </div>
   );
 }
@@ -386,6 +404,8 @@ function EventLanding({
   onSelect,
   onQuantityChange,
   onBuy,
+  onRecover,
+  salesClosed,
 }: {
   catalog: EventTicketCatalog;
   venue: VenueLocation;
@@ -395,6 +415,7 @@ function EventLanding({
     dayNum: string | null;
     month: string | null;
   };
+  salesClosed: boolean;
   selectedTypeId: string | null;
   quantity: number;
   remaining: number;
@@ -403,205 +424,259 @@ function EventLanding({
   onSelect: (type: TicketType) => void;
   onQuantityChange: (n: number) => void;
   onBuy: () => void;
+  onRecover: () => void;
 }) {
   const flyer = publicAssetSrc(catalog.flyer_url);
   const selected = catalog.ticket_types.find((t) => t.id === selectedTypeId);
-  const hasDetail = HARDCODED_EVENT_DETAIL;
+  const detail = catalog.description?.trim() ?? "";
+  const hasDetail = Boolean(detail);
 
   return (
-    <div className="min-h-dvh pb-28">
-      <div className="mx-auto grid max-w-5xl gap-5 px-4 pt-4 lg:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)] lg:items-stretch lg:gap-8 lg:px-6 lg:pt-5">
-        <div className="flex flex-col">
-          <BrandMark />
-          <div className="mt-4 flex min-h-0 flex-1 items-center">
-            <div className="w-full">
-              <div
-                className={cn(
-                  "relative mx-auto overflow-hidden rounded-none border border-cream/15 lg:rounded-[1.35rem]",
-                  hasDetail
-                    ? "w-4/5 max-w-lg"
-                    : "w-full max-w-lg lg:max-w-none",
+    <div className={salesClosed ? "pb-10" : "pb-28"}>
+      <div className="mx-auto grid max-w-5xl gap-5 px-4 pt-4 lg:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)] lg:items-start lg:gap-x-8 lg:gap-y-5 lg:px-6 lg:pt-5">
+        <div className="contents lg:col-start-1 lg:flex lg:flex-col lg:gap-5">
+          <div className="order-1 flex justify-center">
+            <BrandMark />
+          </div>
+
+          <div className="order-3">
+            <div
+              className={cn(
+                "relative mx-auto overflow-hidden rounded-[1.35rem] border border-cream/15 lg:mt-2",
+                hasDetail ? "w-4/5" : "w-4/5 lg:w-full",
+              )}
+            >
+              <div className="aspect-[4/5] w-full overflow-hidden rounded-[1.2rem]">
+                {flyer ? (
+                  <img
+                    src={flyer}
+                    alt={catalog.event_name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full bg-navy" />
                 )}
-              >
-                <div className="aspect-[4/5] w-full overflow-hidden lg:rounded-[1.2rem]">
-                  {flyer ? (
-                    <img
-                      src={flyer}
-                      alt={catalog.event_name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full bg-navy" />
-                  )}
-                </div>
               </div>
-              {hasDetail ? <EventDetail /> : null}
             </div>
+            {hasDetail ? (
+              <div className="mt-4 hidden lg:block">
+                <EventDetail text={detail} />
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="min-w-0 overflow-visible lg:flex lg:flex-col">
-          <h1 className="font-display text-3xl font-semibold uppercase leading-[1.2] tracking-tight text-orange sm:text-4xl lg:text-[2.85rem] lg:leading-[1.18]">
+        <div className="contents lg:col-start-2 lg:flex lg:flex-col lg:gap-5">
+          <h1 className="order-2 text-center font-display text-4xl font-semibold uppercase leading-[1.2] tracking-[0.04em] text-orange sm:text-[2.5rem] lg:text-left lg:text-[2.85rem] lg:leading-[1.18]">
             {catalog.event_name}
           </h1>
 
-          <div className="mt-6 space-y-3.5">
-            <div className="flex items-center gap-3">
-              <div className="ticket-orange flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl text-cream">
-                {when.dayNum && when.month ? (
-                  <>
-                    <span className="text-[9px] font-semibold uppercase leading-none tracking-wider">
-                      {when.month}
-                    </span>
-                    <span className="mt-0.5 text-lg font-semibold leading-none">
-                      {when.dayNum}
-                    </span>
-                  </>
-                ) : (
-                  <Calendar className="h-5 w-5" />
-                )}
+          <div className="order-4 min-w-0">
+            <div className="space-y-3.5">
+              <div className="flex items-center gap-3">
+                <div className="ticket-orange flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl text-cream">
+                  {when.dayNum && when.month ? (
+                    <>
+                      <span className="text-[9px] font-semibold uppercase leading-none tracking-wider">
+                        {when.month}
+                      </span>
+                      <span className="mt-0.5 text-lg font-semibold leading-none">
+                        {when.dayNum}
+                      </span>
+                    </>
+                  ) : (
+                    <Calendar className="h-5 w-5" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium leading-tight">{when.day}</p>
+                  {when.time && (
+                    <p className="mt-0.5 text-sm text-cream/55">{when.time}</p>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-medium leading-tight">{when.day}</p>
-                {when.time && (
-                  <p className="mt-0.5 text-sm text-cream/55">{when.time}</p>
-                )}
-              </div>
+
+              <a
+                href={mapsDirectionsUrl(venue)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-3 rounded-xl transition-colors hover:bg-cream/[0.04]"
+              >
+                <div className="ticket-orange flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-cream">
+                  <MapPin className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="inline-flex items-center gap-1.5 font-medium leading-tight">
+                    {venue.name}
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-cream/45" />
+                  </p>
+                  <p className="mt-0.5 text-sm text-cream/55">
+                    {venueAddressLine(venue)}
+                  </p>
+                </div>
+              </a>
             </div>
 
-            <a
-              href={mapsDirectionsUrl(venue)}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-3 rounded-xl transition-colors hover:bg-cream/[0.04]"
-            >
-              <div className="ticket-orange flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-cream">
-                <MapPin className="h-5 w-5" />
+            {hasDetail ? (
+              <div className="mt-5 lg:hidden">
+                <EventDetail text={detail} />
               </div>
-              <div className="min-w-0">
-                <p className="inline-flex items-center gap-1.5 font-medium leading-tight">
-                  {venue.name}
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-cream/45" />
-                </p>
-                <p className="mt-0.5 text-sm text-cream/55">
-                  {venueAddressLine(venue)}
-                </p>
-              </div>
-            </a>
-          </div>
+            ) : null}
 
-          <section className="mt-7 lg:mt-8">
-            <h2 className="text-xs font-medium uppercase tracking-[0.2em] text-cream/45">
-              Entradas
-            </h2>
-            <div className="mt-3 space-y-2">
-              {sortTicketTypes(catalog.ticket_types).map((type) => {
-                const left = remainingQuantity(type);
-                const soldOut = left <= 0;
-                const isSelected = type.id === selectedTypeId;
-                return (
-                  <div
-                    key={type.id}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-2.5 rounded-2xl px-3.5 py-3",
-                      soldOut && "opacity-40",
-                      isSelected
-                        ? "ticket-orange text-navy"
-                        : "cursor-pointer border border-cream/15 bg-cream/[0.04] hover:bg-cream/[0.08]",
-                    )}
-                    onClick={() => {
-                      if (!soldOut) onSelect(type);
-                    }}
-                  >
-                    <button
-                      type="button"
-                      disabled={soldOut}
-                      onClick={() => onSelect(type)}
-                      className={cn(
-                        "min-w-0 flex-1 text-left",
-                        soldOut ? "cursor-not-allowed" : undefined,
-                      )}
-                    >
-                      <p className={isSelected ? "font-bold" : "font-medium"}>
-                        {type.name}
-                      </p>
-                      {soldOut && (
-                        <p className="mt-0.5 text-xs text-cream/50">Agotado</p>
-                      )}
-                    </button>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {isSelected && !soldOut && (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
-                            disabled={quantity <= 1}
-                            onClick={() =>
-                              onQuantityChange(Math.max(1, quantity - 1))
-                            }
-                          >
-                            <Minus className="h-3.5 w-3.5" />
-                          </Button>
-                          <span className="w-5 text-center text-base font-bold tabular-nums">
-                            {quantity}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
-                            disabled={quantity >= remaining}
-                            onClick={() =>
-                              onQuantityChange(
-                                Math.min(remaining, quantity + 1),
-                              )
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                      <p
+            <section className="mt-7">
+              <h2 className="text-xs font-medium uppercase tracking-[0.2em] text-cream/45">
+                Entradas
+              </h2>
+              {salesClosed ? (
+                <p className="mt-3 rounded-2xl border border-cream/15 bg-cream/[0.04] px-4 py-3 text-sm text-cream/70">
+                  Este evento ya sucedió. La venta de entradas se encuentra
+                  cerrada.
+                </p>
+              ) : null}
+              {!salesClosed && (
+                <div className="mt-3 space-y-2">
+                  {sortTicketTypes(catalog.ticket_types).map((type) => {
+                    const left = remainingQuantity(type);
+                    const soldOut = left <= 0;
+                    const selectable = isTicketTypeSelectable(
+                      type,
+                      catalog.ticket_types,
+                    );
+                    const isSelected = selectable && type.id === selectedTypeId;
+                    const unavailable = !selectable;
+                    return (
+                      <div
+                        key={type.id}
                         className={cn(
-                          "text-lg tabular-nums",
-                          isSelected ? "font-bold" : "font-semibold",
+                          "flex w-full items-center justify-between gap-2.5 rounded-2xl px-3.5 py-3",
+                          unavailable && "opacity-40",
+                          isSelected
+                            ? "ticket-orange text-navy"
+                            : unavailable
+                              ? "cursor-default border border-cream/15 bg-cream/[0.04]"
+                              : "cursor-pointer border border-cream/15 bg-cream/[0.04] hover:bg-cream/[0.08]",
                         )}
+                        onClick={() => {
+                          if (selectable) onSelect(type);
+                        }}
                       >
-                        {formatArsMoney(type.price)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+                        <button
+                          type="button"
+                          disabled={unavailable}
+                          onClick={() => onSelect(type)}
+                          className={cn(
+                            "min-w-0 flex-1 text-left",
+                            unavailable ? "cursor-default" : undefined,
+                          )}
+                        >
+                          <p
+                            className={isSelected ? "font-bold" : "font-medium"}
+                          >
+                            {type.name}
+                          </p>
+                          {soldOut && (
+                            <p className="mt-0.5 text-xs text-cream/50">
+                              Agotado
+                            </p>
+                          )}
+                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isSelected && (
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
+                                disabled={quantity <= 1}
+                                onClick={() =>
+                                  onQuantityChange(Math.max(1, quantity - 1))
+                                }
+                              >
+                                <Minus className="h-3.5 w-3.5" />
+                              </Button>
+                              <span className="w-5 text-center text-base font-bold tabular-nums">
+                                {quantity}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
+                                disabled={quantity >= remaining}
+                                onClick={() =>
+                                  onQuantityChange(
+                                    Math.min(remaining, quantity + 1),
+                                  )
+                                }
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                          <p
+                            className={cn(
+                              "text-lg tabular-nums",
+                              isSelected ? "font-bold" : "font-semibold",
+                            )}
+                          >
+                            {formatArsMoney(type.price)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-          <VenueSection venue={venue} />
+            <button
+              type="button"
+              onClick={onRecover}
+              className={cn(
+                "mt-5 text-sm text-cream/50 underline decoration-cream/25 underline-offset-4 transition-colors hover:text-cream",
+                !salesClosed && "lg:hidden",
+              )}
+            >
+              ¿Ya compraste? Recuperá tu QR
+            </button>
+
+            <VenueSection venue={venue} />
+          </div>
         </div>
       </div>
 
-      <footer className="ticket-footer fixed inset-x-0 bottom-0 px-4 py-3">
-        <div className="mx-auto flex max-w-5xl items-center justify-end gap-3 lg:px-3">
-          <div className="min-w-0 text-right">
-            <p className="text-[11px] uppercase tracking-wide text-cream/55">
-              {selected ? `${quantity} × ${selected.name}` : "Desde"}
-            </p>
-            <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
-              {formatArsMoney(selected ? total : (fromPrice ?? 0))}
-            </p>
+      {!salesClosed && (
+        <footer className="ticket-footer fixed bottom-0 left-0 right-0 z-[100] w-full px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-5xl items-center gap-4 lg:px-3">
+            <button
+              type="button"
+              onClick={onRecover}
+              className="hidden min-w-0 text-left text-sm text-cream/50 underline decoration-cream/25 underline-offset-4 transition-colors hover:text-cream lg:inline"
+            >
+              ¿Ya compraste? Recuperá tu QR
+            </button>
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3 lg:flex-none lg:justify-end lg:gap-5 lg:ml-auto">
+              <div className="min-w-0 text-left lg:text-right">
+                <p className="text-[11px] uppercase tracking-wide text-cream/55">
+                  {selected ? `${quantity} × ${selected.name}` : "Desde"}
+                </p>
+                <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
+                  {formatArsMoney(selected ? total : (fromPrice ?? 0))}
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="ticket-orange tracking-wide h-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90 lg:px-8"
+                disabled={!selectedTypeId || remaining <= 0}
+                onClick={onBuy}
+              >
+                Comprar entradas
+              </Button>
+            </div>
           </div>
-          <Button
-            size="lg"
-            className="ticket-orange h-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90 lg:px-8"
-            disabled={!selectedTypeId || remaining <= 0}
-            onClick={onBuy}
-          >
-            Comprar entradas
-          </Button>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
@@ -651,6 +726,7 @@ function EventCheckout({
   total,
   buyerName,
   buyerPhone,
+  buyerEmail,
   buyerErrors,
   receiptUrl,
   receiptName,
@@ -661,6 +737,7 @@ function EventCheckout({
   onBack,
   onNameChange,
   onPhoneChange,
+  onEmailChange,
   onContinueBuyer,
   onContinuePay,
   onPickReceipt,
@@ -675,7 +752,8 @@ function EventCheckout({
   total: number;
   buyerName: string;
   buyerPhone: string;
-  buyerErrors: { name?: string; phone?: string };
+  buyerEmail: string;
+  buyerErrors: { name?: string; phone?: string; email?: string };
   receiptUrl: string;
   receiptName: string;
   receiptFile: File | null;
@@ -685,6 +763,7 @@ function EventCheckout({
   onBack: () => void;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
+  onEmailChange: (v: string) => void;
   onContinueBuyer: () => void;
   onContinuePay: () => void;
   onPickReceipt: () => void;
@@ -695,23 +774,31 @@ function EventCheckout({
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <header className="flex items-center gap-3 px-4 py-4">
+      <header
+        className={cn(
+          "flex items-center gap-3 px-4 py-4",
+          step === "done" && "justify-center text-center",
+        )}
+      >
         {step !== "done" && (
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="text-cream hover:bg-cream/10"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-cream hover:bg-white/10 hover:text-cream"
             onClick={onBack}
           >
             <ArrowLeft className="h-5 w-5" />
-          </Button>
+          </button>
         )}
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-cream/45">
-            {venue.name}
+        <div className={cn("min-w-0", step === "done" && "max-w-full")}>
+          <p className="text-[11px] uppercase tracking-[0.1em] font-semibold text-cream">
+            Club Cultural Terzo Posto
           </p>
-          <h1 className="font-display truncate text-base font-semibold">
+          <h1
+            className={cn(
+              "font-display text-2xl font-semibold uppercase leading-[1.2] tracking-[0.04em] text-cream sm:text-xl",
+              step === "done" ? "text-balance" : "truncate",
+            )}
+          >
             {catalog.event_name}
           </h1>
         </div>
@@ -736,9 +823,11 @@ function EventCheckout({
           <BuyerStep
             name={buyerName}
             phone={buyerPhone}
+            email={buyerEmail}
             errors={buyerErrors}
             onNameChange={onNameChange}
             onPhoneChange={onPhoneChange}
+            onEmailChange={onEmailChange}
           />
         )}
         {step === "pay" && selectedType && (
@@ -746,6 +835,7 @@ function EventCheckout({
             typeName={selectedType.name}
             quantity={quantity}
             total={total}
+            transfer={catalog.transfer ?? DEFAULT_TICKET_TRANSFER}
           />
         )}
         {step === "receipt" && (
@@ -768,22 +858,20 @@ function EventCheckout({
       </main>
 
       {step !== "done" && (
-        <footer className="ticket-footer fixed inset-x-0 bottom-0 px-5 py-3">
-          <div className="mx-auto flex max-w-lg items-center gap-3">
-            <div className="min-w-0 flex-1">
-              {total > 0 && (
-                <p className="text-sm text-cream/55">
-                  Total{" "}
-                  <span className="font-semibold text-cream">
-                    {formatArsMoney(total)}
-                  </span>
-                </p>
-              )}
+        <footer className="ticket-footer fixed bottom-0 left-0 right-0 z-[100] w-full px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-3 lg:justify-end lg:gap-5">
+            <div className="min-w-0 text-left lg:text-right">
+              <p className="text-[11px] uppercase tracking-wide text-cream/55">
+                {selectedType ? `${quantity} × ${selectedType.name}` : "Total"}
+              </p>
+              <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
+                {formatArsMoney(total)}
+              </p>
             </div>
             {step === "buyer" && (
               <Button
                 size="lg"
-                className="ticket-orange text-navy hover:opacity-90"
+                className="ticket-orange tracking-wideh-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
                 onClick={onContinueBuyer}
               >
                 Continuar
@@ -792,7 +880,7 @@ function EventCheckout({
             {step === "pay" && (
               <Button
                 size="lg"
-                className="ticket-orange text-navy hover:opacity-90"
+                className="ticket-orange tracking-wideh-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
                 onClick={onContinuePay}
               >
                 Ya transferí
@@ -801,7 +889,7 @@ function EventCheckout({
             {step === "receipt" && (
               <Button
                 size="lg"
-                className="ticket-orange text-navy hover:opacity-90"
+                className="ticket-orange tracking-wide h-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
                 disabled={!receiptFile || submitting}
                 onClick={onSubmit}
               >
@@ -831,9 +919,6 @@ function UnavailableState({
             ? "No encontramos este evento"
             : "Este evento no tiene entradas a la venta"}
       </p>
-      <p className="mt-2 text-sm text-cream/55">
-        Si llegaste por un link, pedile a Terzo Posto que lo vuelva a compartir.
-      </p>
     </div>
   );
 }
@@ -841,15 +926,19 @@ function UnavailableState({
 function BuyerStep({
   name,
   phone,
+  email,
   errors,
   onNameChange,
   onPhoneChange,
+  onEmailChange,
 }: {
   name: string;
   phone: string;
-  errors: { name?: string; phone?: string };
+  email: string;
+  errors: { name?: string; phone?: string; email?: string };
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
+  onEmailChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -858,7 +947,8 @@ function BuyerStep({
           Tus datos
         </h2>
         <p className="mt-1 text-sm text-cream/55">
-          Los usamos para contactarte si hace falta confirmar el pago.
+          Te mandamos el QR por mail y te contactamos si hace falta confirmar el
+          pago.
         </p>
       </div>
       <div className="space-y-4">
@@ -868,12 +958,27 @@ function BuyerStep({
             id="buyer-name"
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
-            placeholder="Como figura en el DNI"
             autoComplete="name"
             className="h-12 border-cream/15 bg-cream/[0.06] text-cream placeholder:text-cream/35"
           />
           {errors.name && (
             <p className="text-xs text-destructive">{errors.name}</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="buyer-email">Email</Label>
+          <Input
+            id="buyer-email"
+            type="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            placeholder="tumail@email.com"
+            autoComplete="email"
+            className="h-12 border-cream/15 bg-cream/[0.06] text-cream placeholder:text-cream/35"
+          />
+          {errors.email && (
+            <p className="text-xs text-destructive">{errors.email}</p>
           )}
         </div>
         <div className="space-y-1.5">
@@ -901,15 +1006,22 @@ function PayStep({
   typeName,
   quantity,
   total,
+  transfer,
 }: {
   typeName: string;
   quantity: number;
   total: number;
+  transfer: { alias: string; holder: string };
 }) {
+  const [copied, setCopied] = useState(false);
+  const alias = transfer.alias.trim() || DEFAULT_TICKET_TRANSFER.alias;
+  const holder = transfer.holder.trim() || DEFAULT_TICKET_TRANSFER.holder;
+
   const copyAlias = async () => {
     try {
-      await navigator.clipboard.writeText(TRANSFER_ALIAS);
-      toast.success("Alias copiado");
+      await navigator.clipboard.writeText(alias);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("No se pudo copiar el alias");
     }
@@ -936,9 +1048,7 @@ function PayStep({
           Alias
         </p>
         <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xl font-semibold tracking-wide">
-            {TRANSFER_ALIAS}
-          </p>
+          <p className="text-xl font-semibold tracking-wide">{alias}</p>
           <Button
             type="button"
             variant="outline"
@@ -946,10 +1056,16 @@ function PayStep({
             className="border-cream/20 bg-transparent text-cream hover:bg-cream/10"
             onClick={copyAlias}
           >
-            <Copy className="h-3.5 w-3.5" />
-            Copiar
+            {copied ? null : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "¡Copiado!" : "Copiar"}
           </Button>
         </div>
+        <p className="mt-2 text-sm text-cream/70">
+          A nombre de{" "}
+          <span className="font-semibold tracking-wide text-cream">
+            {holder}
+          </span>
+        </p>
         <p className="mt-3 text-sm text-cream/50">
           Transferí desde tu banco o Mercado Pago. En el siguiente paso subí el
           comprobante.
@@ -1022,16 +1138,186 @@ function ReceiptStep({
   );
 }
 
+function RecoverTicket({
+  slug,
+  eventName,
+  onBack,
+}: {
+  slug: string;
+  eventName: string;
+  onBack: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; phone?: string }>({});
+  const [searching, setSearching] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[] | null>(null);
+
+  const handleSearch = async () => {
+    const next: { email?: string; phone?: string } = {};
+    if (!email.trim()) next.email = "Ingresá tu email";
+    else if (!isValidEmail(email)) next.email = "Revisá el email";
+    if (!phone.trim()) next.phone = "Ingresá tu teléfono";
+    else if (!isReasonableArPhone(phone)) {
+      next.phone = "Revisá el número (ej. 11 1234-5678)";
+    }
+    setErrors(next);
+    if (Object.keys(next).length > 0 || searching) return;
+    setSearching(true);
+    try {
+      const found = await lookupPublicTickets(slug, {
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+      });
+      setTickets(found);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo buscar la entrada";
+      if (message.includes("No encontramos")) {
+        setTickets([]);
+        return;
+      }
+      toast.error(message);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
+      <header className="flex items-center gap-3 px-4 py-4">
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-cream hover:bg-white/10 hover:text-cream"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-[0.1em] font-semibold text-cream">
+            Club Cultural Terzo Posto
+          </p>
+          <h1 className="truncate font-display text-2xl font-semibold uppercase leading-[1.2] tracking-[0.04em] text-cream sm:text-xl">
+            {eventName}
+          </h1>
+        </div>
+      </header>
+
+      <main className="flex-1 space-y-8 px-5 pb-10 pt-2">
+        <div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">
+            Recuperá tu entrada
+          </h2>
+          <p className="mt-1 text-sm text-cream/55">
+            Ingresá el mail y el teléfono con los que compraste.
+          </p>
+        </div>
+
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSearch();
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="recover-email">Email</Label>
+            <Input
+              id="recover-email"
+              type="email"
+              inputMode="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setTickets(null);
+                setErrors((prev) => ({ ...prev, email: undefined }));
+              }}
+              placeholder="tumail@email.com"
+              autoComplete="email"
+              className="h-12 border-cream/15 bg-cream/[0.06] text-cream placeholder:text-cream/35"
+            />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email}</p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="recover-phone">Teléfono</Label>
+            <Input
+              id="recover-phone"
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setTickets(null);
+                setErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
+              placeholder="11 1234-5678"
+              autoComplete="tel"
+              className="h-12 border-cream/15 bg-cream/[0.06] text-cream placeholder:text-cream/35"
+            />
+            {errors.phone && (
+              <p className="text-xs text-destructive">{errors.phone}</p>
+            )}
+          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full text-lg font-bold tracking-wide"
+            disabled={searching}
+          >
+            {searching ? "Buscando…" : "Buscar"}
+          </Button>
+        </form>
+
+        {tickets && tickets.length === 0 && (
+          <p className="rounded-xl bg-cream/[0.06] px-4 py-3 text-sm text-cream/70">
+            No encontramos una entrada con esos datos.
+          </p>
+        )}
+
+        {tickets && tickets.length > 0 && (
+          <div className="space-y-10">
+            {tickets.map((ticket) => (
+              <DoneStep
+                key={ticket.id}
+                ticket={ticket}
+                typeName={ticket.ticket_type_name || "entrada"}
+                eventName={eventName}
+                heading="Esta es tu entrada"
+                note="Presentá este QR para entrar."
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 function DoneStep({
   ticket,
   typeName,
   eventName,
+  heading = "¡Listo, ya está tu entrada!",
+  note = (
+    <>
+      Guardá el QR para ingresar al evento.
+      <br />
+      <br />
+      También te lo enviamos por mail.
+    </>
+  ),
 }: {
   ticket: Ticket;
   typeName: string;
   eventName: string;
+  heading?: string;
+  note?: ReactNode;
 }) {
-  const canvasId = "ticket-qr-canvas";
+  const canvasId = `ticket-qr-canvas-${ticket.id}`;
 
   const saveQr = async () => {
     const canvas = document.getElementById(
@@ -1072,22 +1358,43 @@ function DoneStep({
       </div>
       <div>
         <h2 className="font-display text-2xl font-semibold tracking-tight">
-          ¡Listo, ya está tu entrada!
+          {heading}
         </h2>
         <p className="mt-2 text-sm text-cream/55">
           {ticket.quantity} × {typeName} · {eventName}
         </p>
       </div>
-      <div className="flex justify-center rounded-2xl bg-cream p-5">
-        <QRCodeCanvas
-          id={canvasId}
-          value={ticket.id}
-          size={220}
-          includeMargin
-          level="M"
-        />
+      <div className="mx-auto w-full sm:w-72">
+        <div className="rounded-2xl bg-orange p-5">
+          <div className="overflow-hidden rounded-2xl bg-cream">
+            <QRCodeSVG
+              value={ticket.id}
+              size={320}
+              includeMargin
+              bgColor="#F1ECD9"
+              fgColor="#00234A"
+              level="M"
+              className="block h-auto w-full"
+            />
+            <QRCodeCanvas
+              id={canvasId}
+              value={ticket.id}
+              size={320}
+              includeMargin
+              bgColor="#F1ECD9"
+              fgColor="#00234A"
+              level="M"
+              className="hidden"
+            />
+          </div>
+        </div>
       </div>
-      <Button type="button" size="lg" className="w-full" onClick={saveQr}>
+      <Button
+        type="button"
+        size="lg"
+        className="w-full text-lg font-bold tracking-wide"
+        onClick={saveQr}
+      >
         {typeof navigator !== "undefined" && "share" in navigator ? (
           <Share2 className="h-4 w-4" />
         ) : (
@@ -1095,9 +1402,8 @@ function DoneStep({
         )}
         Guardar QR
       </Button>
-      <p className="rounded-xl bg-amber-500/15 px-3 py-2.5 text-sm text-amber-200">
-        La entrada queda pendiente de confirmación de pago. Guardá el QR: lo vas
-        a necesitar en la puerta.
+      <p className="rounded-xl bg-amber-500/15 px-3 py-2.5 text-sm tracking-wide text-amber-200">
+        {note}
       </p>
     </div>
   );

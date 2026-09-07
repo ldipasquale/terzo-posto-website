@@ -13,10 +13,14 @@ export function venueAddressLine(venue: VenueLocation) {
 }
 
 function mapsQuery(venue: VenueLocation) {
+  const labeled = [venue.name, venue.address, venue.city]
+    .filter(Boolean)
+    .join(", ");
+  if (labeled) return labeled;
   if (venue.lat != null && venue.lng != null) {
     return `${venue.lat},${venue.lng}`;
   }
-  return [venue.name, venue.address, venue.city].filter(Boolean).join(", ");
+  return "";
 }
 
 export function mapsEmbedSrc(venue: VenueLocation) {

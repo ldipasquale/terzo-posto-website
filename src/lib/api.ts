@@ -26,6 +26,7 @@ export async function purchasePublicTicket(input: {
   quantity: number;
   buyer_name: string;
   buyer_phone: string;
+  buyer_email: string;
   receipt: File;
 }): Promise<Ticket> {
   const form = new FormData();
@@ -33,6 +34,7 @@ export async function purchasePublicTicket(input: {
   form.append("quantity", String(input.quantity));
   form.append("buyer_name", input.buyer_name);
   form.append("buyer_phone", input.buyer_phone);
+  form.append("buyer_email", input.buyer_email);
   form.append("receipt", input.receipt);
 
   const response = await fetch(
@@ -41,4 +43,24 @@ export async function purchasePublicTicket(input: {
   );
   if (!response.ok) throw new Error(await readError(response));
   return response.json();
+}
+
+export async function lookupPublicTickets(
+  slug: string,
+  input: { email: string; phone: string },
+): Promise<Ticket[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/public/events/${encodeURIComponent(slug)}/tickets/lookup`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: input.email,
+        phone: input.phone,
+      }),
+    },
+  );
+  if (!response.ok) throw new Error(await readError(response));
+  const body = (await response.json()) as { tickets?: Ticket[] };
+  return body.tickets ?? [];
 }

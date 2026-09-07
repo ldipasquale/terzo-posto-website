@@ -19,6 +19,36 @@ export function sortTicketTypes(types: TicketType[]): TicketType[] {
   });
 }
 
+export function isTicketTypeSelectable(
+  type: TicketType,
+  types: TicketType[],
+): boolean {
+  if (remainingQuantity(type) <= 0) return false;
+  const available = types.filter((t) => remainingQuantity(t) > 0);
+  if (available.length <= 1) return true;
+  const minPrice = Math.min(...available.map((t) => t.price));
+  return type.price === minPrice;
+}
+
+export function todayYmdBuenosAires(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+export function isPublicEventPast(date?: string | null): boolean {
+  if (!date) return false;
+  return String(date).slice(0, 10) < todayYmdBuenosAires();
+}
+
+export function isValidEmail(value: string): boolean {
+  const email = value.trim();
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export function isReasonableArPhone(value: string): boolean {
   const digits = value.replace(/\D/g, "");
   return digits.length >= 8 && digits.length <= 15;
