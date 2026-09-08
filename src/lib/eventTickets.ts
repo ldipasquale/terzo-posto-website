@@ -10,6 +10,10 @@ export function remainingQuantity(type: TicketType): number {
   return Math.max(0, type.available_quantity - type.sold_quantity);
 }
 
+export function isFreeTicketType(type: { price: number } | null | undefined): boolean {
+  return type != null && Number.isFinite(type.price) && type.price <= 0;
+}
+
 export function sortTicketTypes(types: TicketType[]): TicketType[] {
   return [...types].sort((a, b) => {
     const aOut = remainingQuantity(a) <= 0;

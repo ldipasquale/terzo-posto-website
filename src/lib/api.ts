@@ -27,7 +27,7 @@ export async function purchasePublicTicket(input: {
   buyer_name: string;
   buyer_phone: string;
   buyer_email: string;
-  receipt: File;
+  receipt?: File | null;
 }): Promise<Ticket> {
   const form = new FormData();
   form.append("ticket_type_id", input.ticket_type_id);
@@ -35,7 +35,7 @@ export async function purchasePublicTicket(input: {
   form.append("buyer_name", input.buyer_name);
   form.append("buyer_phone", input.buyer_phone);
   form.append("buyer_email", input.buyer_email);
-  form.append("receipt", input.receipt);
+  if (input.receipt) form.append("receipt", input.receipt);
 
   const response = await fetch(
     `${API_BASE_URL}/public/events/${encodeURIComponent(input.slug)}/tickets`,

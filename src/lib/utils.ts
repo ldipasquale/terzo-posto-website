@@ -20,3 +20,9 @@ export function formatArsMoney(value: number): string {
   if (rounded < 0) return `-$${core}`;
   return `$${core}`;
 }
+
+export function formatTicketPrice(value: number): string {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "Gratis";
+  return formatArsMoney(n);
+}

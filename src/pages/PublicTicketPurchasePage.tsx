@@ -30,6 +30,7 @@ import type {
 } from "@/types/eventTicket";
 import { DEFAULT_TICKET_TRANSFER } from "@/types/eventTicket";
 import {
+  isFreeTicketType,
   isReasonableArPhone,
   isPublicEventPast,
   isTicketTypeSelectable,
@@ -43,7 +44,7 @@ import {
   mapsEmbedSrc,
   venueAddressLine,
 } from "@/lib/venueMaps";
-import { cn, formatArsMoney } from "@/lib/utils";
+import { cn, formatTicketPrice } from "@/lib/utils";
 
 type Phase = "landing" | "checkout" | "recover";
 type CheckoutStep = "buyer" | "pay" | "receipt" | "done";
@@ -171,6 +172,7 @@ export function PublicTicketPurchasePage() {
     (t) => t.id === selectedTypeId,
   );
   const remaining = selectedType ? remainingQuantity(selectedType) : 0;
+  const isFree = isFreeTicketType(selectedType);
   const total =
     selectedType && quantity > 0 ? selectedType.price * quantity : 0;
   const fromPrice = useMemo(() => {
@@ -216,8 +218,8 @@ export function PublicTicketPurchasePage() {
   };
 
   const handleSubmit = async () => {
-    if (!slug || !catalog || !selectedType || !receiptFile || submitting)
-      return;
+    if (!slug || !catalog || !selectedType || submitting) return;
+    if (!isFreeTicketType(selectedType) && !receiptFile) return;
     setSubmitting(true);
     try {
       const ticket = await purchasePublicTicket({
@@ -227,7 +229,7 @@ export function PublicTicketPurchasePage() {
         buyer_name: buyerName,
         buyer_phone: buyerPhone,
         buyer_email: buyerEmail.trim().toLowerCase(),
-        receipt: receiptFile,
+        receipt: isFreeTicketType(selectedType) ? null : receiptFile,
       });
       setCreatedTicket(ticket);
       setStep("done");
@@ -283,6 +285,7 @@ export function PublicTicketPurchasePage() {
           remaining={remaining}
           total={total}
           fromPrice={fromPrice}
+          isFree={isFree}
           onSelect={(type) => {
             if (salesClosed) return;
             const left = remainingQuantity(type);
@@ -310,6 +313,7 @@ export function PublicTicketPurchasePage() {
           selectedType={selectedType}
           quantity={quantity}
           total={total}
+          isFree={isFree}
           buyerName={buyerName}
           buyerPhone={buyerPhone}
           buyerEmail={buyerEmail}
@@ -334,7 +338,9 @@ export function PublicTicketPurchasePage() {
             setBuyerErrors((e) => ({ ...e, email: undefined }));
           }}
           onContinueBuyer={() => {
-            if (validateBuyer()) setStep("pay");
+            if (!validateBuyer()) return;
+            if (isFree) void handleSubmit();
+            else setStep("pay");
           }}
           onContinuePay={() => setStep("receipt")}
           onPickReceipt={() => fileInputRef.current?.click()}
@@ -401,6 +407,7 @@ function EventLanding({
   remaining,
   total,
   fromPrice,
+  isFree,
   onSelect,
   onQuantityChange,
   onBuy,
@@ -421,6 +428,7 @@ function EventLanding({
   remaining: number;
   total: number;
   fromPrice: number | null;
+  isFree: boolean;
   onSelect: (type: TicketType) => void;
   onQuantityChange: (n: number) => void;
   onBuy: () => void;
@@ -620,7 +628,7 @@ function EventLanding({
                               isSelected ? "font-bold" : "font-semibold",
                             )}
                           >
-                            {formatArsMoney(type.price)}
+                            {formatTicketPrice(type.price)}
                           </p>
                         </div>
                       </div>
@@ -662,7 +670,7 @@ function EventLanding({
                   {selected ? `${quantity} × ${selected.name}` : "Desde"}
                 </p>
                 <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
-                  {formatArsMoney(selected ? total : (fromPrice ?? 0))}
+                  {formatTicketPrice(selected ? total : (fromPrice ?? 0))}
                 </p>
               </div>
               <Button
@@ -671,7 +679,7 @@ function EventLanding({
                 disabled={!selectedTypeId || remaining <= 0}
                 onClick={onBuy}
               >
-                Comprar entradas
+                {isFree ? "Reservar entradas" : "Comprar entradas"}
               </Button>
             </div>
           </div>
@@ -724,6 +732,7 @@ function EventCheckout({
   selectedType,
   quantity,
   total,
+  isFree,
   buyerName,
   buyerPhone,
   buyerEmail,
@@ -750,6 +759,7 @@ function EventCheckout({
   selectedType?: TicketType;
   quantity: number;
   total: number;
+  isFree: boolean;
   buyerName: string;
   buyerPhone: string;
   buyerEmail: string;
@@ -807,15 +817,17 @@ function EventCheckout({
       <main className="flex-1 px-5 pb-28 pt-2">
         {step !== "done" && (
           <ol className="mb-8 flex gap-1">
-            {CHECKOUT_STEPS.map((s, i) => (
-              <li
-                key={s.id}
-                className={cn(
-                  "h-1 flex-1 rounded-full",
-                  i <= stepIndex ? "bg-orange" : "bg-cream/15",
-                )}
-              />
-            ))}
+            {(isFree ? CHECKOUT_STEPS.slice(0, 1) : CHECKOUT_STEPS).map(
+              (s, i) => (
+                <li
+                  key={s.id}
+                  className={cn(
+                    "h-1 flex-1 rounded-full",
+                    i <= stepIndex ? "bg-orange" : "bg-cream/15",
+                  )}
+                />
+              ),
+            )}
           </ol>
         )}
 
@@ -825,12 +837,13 @@ function EventCheckout({
             phone={buyerPhone}
             email={buyerEmail}
             errors={buyerErrors}
+            isFree={isFree}
             onNameChange={onNameChange}
             onPhoneChange={onPhoneChange}
             onEmailChange={onEmailChange}
           />
         )}
-        {step === "pay" && selectedType && (
+        {step === "pay" && selectedType && !isFree && (
           <PayStep
             typeName={selectedType.name}
             quantity={quantity}
@@ -838,7 +851,7 @@ function EventCheckout({
             transfer={catalog.transfer ?? DEFAULT_TICKET_TRANSFER}
           />
         )}
-        {step === "receipt" && (
+        {step === "receipt" && !isFree && (
           <ReceiptStep
             fileInputRef={fileInputRef}
             receiptUrl={receiptUrl}
@@ -865,16 +878,21 @@ function EventCheckout({
                 {selectedType ? `${quantity} × ${selectedType.name}` : "Total"}
               </p>
               <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
-                {formatArsMoney(total)}
+                {formatTicketPrice(total)}
               </p>
             </div>
             {step === "buyer" && (
               <Button
                 size="lg"
                 className="ticket-orange tracking-wideh-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
+                disabled={isFree && submitting}
                 onClick={onContinueBuyer}
               >
-                Continuar
+                {isFree
+                  ? submitting
+                    ? "Generando…"
+                    : "Confirmar"
+                  : "Continuar"}
               </Button>
             )}
             {step === "pay" && (
@@ -928,6 +946,7 @@ function BuyerStep({
   phone,
   email,
   errors,
+  isFree,
   onNameChange,
   onPhoneChange,
   onEmailChange,
@@ -936,6 +955,7 @@ function BuyerStep({
   phone: string;
   email: string;
   errors: { name?: string; phone?: string; email?: string };
+  isFree?: boolean;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onEmailChange: (v: string) => void;
@@ -947,8 +967,9 @@ function BuyerStep({
           Tus datos
         </h2>
         <p className="mt-1 text-sm text-cream/55">
-          Te mandamos el QR por mail y te contactamos si hace falta confirmar el
-          pago.
+          {isFree
+            ? "Con estos datos te generamos el QR al instante y te lo mandamos por mail."
+            : "Te mandamos el QR por mail y te contactamos si hace falta confirmar el pago."}
         </p>
       </div>
       <div className="space-y-4">
@@ -1040,7 +1061,7 @@ function PayStep({
       <div className="rounded-2xl border border-cream/15 bg-cream/[0.04] p-6 text-center">
         <p className="text-sm text-cream/50">Monto a transferir</p>
         <p className="mt-1 text-4xl font-semibold tabular-nums">
-          {formatArsMoney(total)}
+          {formatTicketPrice(total)}
         </p>
       </div>
       <div className="rounded-2xl border border-cream/15 bg-cream/[0.04] p-5">
