@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -390,10 +390,44 @@ function BrandMark() {
   );
 }
 
+function renderInline(text: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    const bold = part.match(/^\*\*([^*]+)\*\*$/);
+    if (bold) {
+      return (
+        <strong key={i} className="font-semibold text-cream">
+          {bold[1]}
+        </strong>
+      );
+    }
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
+
+function renderEventDescription(text: string): ReactNode {
+  const lines = text.split("\n");
+  return lines.map((line, i) => {
+    const heading = line.match(/^#\s+(.*)$/);
+    return (
+      <Fragment key={i}>
+        {heading ? (
+          <strong className="font-semibold text-cream">
+            {renderInline(heading[1])}
+          </strong>
+        ) : (
+          renderInline(line)
+        )}
+        {i < lines.length - 1 ? "\n" : null}
+      </Fragment>
+    );
+  });
+}
+
 function EventDetail({ text }: { text: string }) {
   return (
     <div className="mx-auto max-w-lg whitespace-pre-wrap text-sm leading-relaxed text-cream/70 lg:mx-0 lg:max-w-none">
-      {text}
+      {renderEventDescription(text)}
     </div>
   );
 }
