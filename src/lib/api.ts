@@ -28,6 +28,7 @@ export async function purchasePublicTicket(input: {
   buyer_phone: string;
   buyer_email: string;
   receipt?: File | null;
+  menu_items?: Array<{ menu_item_id: string; quantity: number }>;
 }): Promise<Ticket> {
   const form = new FormData();
   form.append("ticket_type_id", input.ticket_type_id);
@@ -35,6 +36,9 @@ export async function purchasePublicTicket(input: {
   form.append("buyer_name", input.buyer_name);
   form.append("buyer_phone", input.buyer_phone);
   form.append("buyer_email", input.buyer_email);
+  if (input.menu_items?.length) {
+    form.append("menu_items", JSON.stringify(input.menu_items));
+  }
   if (input.receipt) form.append("receipt", input.receipt);
 
   const response = await fetch(

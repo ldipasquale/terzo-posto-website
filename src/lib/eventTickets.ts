@@ -1,4 +1,8 @@
-import type { Ticket, TicketType } from "@/types/eventTicket";
+import type {
+  EventTicketMenuItem,
+  Ticket,
+  TicketType,
+} from "@/types/eventTicket";
 
 export const TICKET_TYPE_LABEL = "Tipo de entrada";
 
@@ -12,6 +16,30 @@ export function remainingQuantity(type: TicketType): number {
 
 export function isFreeTicketType(type: { price: number } | null | undefined): boolean {
   return type != null && Number.isFinite(type.price) && type.price <= 0;
+}
+
+export function ticketMenuAmount(
+  items: EventTicketMenuItem[] | undefined,
+  quantities: Record<string, number>,
+): number {
+  if (!items?.length) return 0;
+  return items.reduce(
+    (sum, item) => sum + item.price * Math.max(0, quantities[item.id] || 0),
+    0,
+  );
+}
+
+export function selectedMenuItems(
+  items: EventTicketMenuItem[] | undefined,
+  quantities: Record<string, number>,
+): Array<{ menu_item_id: string; quantity: number }> {
+  if (!items?.length) return [];
+  return items
+    .map((item) => ({
+      menu_item_id: item.id,
+      quantity: Math.max(0, Math.floor(quantities[item.id] || 0)),
+    }))
+    .filter((item) => item.quantity > 0);
 }
 
 export function sortTicketTypes(types: TicketType[]): TicketType[] {

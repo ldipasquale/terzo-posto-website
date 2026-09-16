@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -20,10 +28,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPublicEvent, lookupPublicTickets, purchasePublicTicket } from "@/lib/api";
+import {
+  getPublicEvent,
+  lookupPublicTickets,
+  purchasePublicTicket,
+} from "@/lib/api";
 import { publicAssetSrc } from "@/lib/media";
 import type {
   EventTicketCatalog,
+  EventTicketMenuItem,
   Ticket,
   TicketType,
   VenueLocation,
@@ -36,7 +49,9 @@ import {
   isTicketTypeSelectable,
   isValidEmail,
   remainingQuantity,
+  selectedMenuItems,
   sortTicketTypes,
+  ticketMenuAmount,
 } from "@/lib/eventTickets";
 import {
   FALLBACK_VENUE,
@@ -47,13 +62,21 @@ import {
 import { cn, formatTicketPrice } from "@/lib/utils";
 
 type Phase = "landing" | "checkout" | "recover";
-type CheckoutStep = "buyer" | "pay" | "receipt" | "done";
+type CheckoutStep = "buyer" | "menu" | "pay" | "receipt" | "done";
 
-const CHECKOUT_STEPS: { id: CheckoutStep; label: string }[] = [
-  { id: "buyer", label: "Datos" },
-  { id: "pay", label: "Pago" },
-  { id: "receipt", label: "Comprobante" },
-];
+const MAX_MENU_QTY = 20;
+
+function checkoutSteps(hasMenu: boolean, needsPayment: boolean) {
+  const steps: { id: CheckoutStep; label: string }[] = [
+    { id: "buyer", label: "Datos" },
+  ];
+  if (hasMenu) steps.push({ id: "menu", label: "Menú" });
+  if (needsPayment) {
+    steps.push({ id: "pay", label: "Pago" });
+    steps.push({ id: "receipt", label: "Comprobante" });
+  }
+  return steps;
+}
 
 function capitalizeFirst(value: string) {
   if (!value) return value;
@@ -124,6 +147,7 @@ export function PublicTicketPurchasePage() {
   const [receiptName, setReceiptName] = useState("");
   const [createdTicket, setCreatedTicket] = useState<Ticket | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [menuQty, setMenuQty] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -172,9 +196,15 @@ export function PublicTicketPurchasePage() {
     (t) => t.id === selectedTypeId,
   );
   const remaining = selectedType ? remainingQuantity(selectedType) : 0;
-  const isFree = isFreeTicketType(selectedType);
-  const total =
+  const menuItems = catalog?.menu_items ?? [];
+  const hasMenu = menuItems.length > 0;
+  const extrasTotal = ticketMenuAmount(menuItems, menuQty);
+  const ticketTotal =
     selectedType && quantity > 0 ? selectedType.price * quantity : 0;
+  const isFree = isFreeTicketType(selectedType);
+  const total = ticketTotal;
+  const checkoutTotal = ticketTotal + extrasTotal;
+  const needsPayment = checkoutTotal > 0;
   const fromPrice = useMemo(() => {
     const prices = (catalog?.ticket_types ?? [])
       .filter((t) => remainingQuantity(t) > 0)
@@ -219,7 +249,7 @@ export function PublicTicketPurchasePage() {
 
   const handleSubmit = async () => {
     if (!slug || !catalog || !selectedType || submitting) return;
-    if (!isFreeTicketType(selectedType) && !receiptFile) return;
+    if (needsPayment && !receiptFile) return;
     setSubmitting(true);
     try {
       const ticket = await purchasePublicTicket({
@@ -229,7 +259,8 @@ export function PublicTicketPurchasePage() {
         buyer_name: buyerName,
         buyer_phone: buyerPhone,
         buyer_email: buyerEmail.trim().toLowerCase(),
-        receipt: isFreeTicketType(selectedType) ? null : receiptFile,
+        receipt: needsPayment ? receiptFile : null,
+        menu_items: selectedMenuItems(menuItems, menuQty),
       });
       setCreatedTicket(ticket);
       setStep("done");
@@ -249,7 +280,8 @@ export function PublicTicketPurchasePage() {
       setPhase("landing");
       return;
     }
-    if (step === "pay") setStep("buyer");
+    if (step === "menu") setStep("buyer");
+    else if (step === "pay") setStep(hasMenu ? "menu" : "buyer");
     else if (step === "receipt") setStep("pay");
   };
 
@@ -312,8 +344,12 @@ export function PublicTicketPurchasePage() {
           step={step}
           selectedType={selectedType}
           quantity={quantity}
-          total={total}
-          isFree={isFree}
+          total={checkoutTotal}
+          extrasTotal={extrasTotal}
+          hasMenu={hasMenu}
+          menuItems={menuItems}
+          menuQty={menuQty}
+          needsPayment={needsPayment}
           buyerName={buyerName}
           buyerPhone={buyerPhone}
           buyerEmail={buyerEmail}
@@ -337,9 +373,17 @@ export function PublicTicketPurchasePage() {
             setBuyerEmail(v);
             setBuyerErrors((e) => ({ ...e, email: undefined }));
           }}
+          onMenuQtyChange={(id, next) => {
+            setMenuQty((prev) => ({ ...prev, [id]: next }));
+          }}
           onContinueBuyer={() => {
             if (!validateBuyer()) return;
-            if (isFree) void handleSubmit();
+            if (hasMenu) setStep("menu");
+            else if (!needsPayment) void handleSubmit();
+            else setStep("pay");
+          }}
+          onContinueMenu={() => {
+            if (!needsPayment) void handleSubmit();
             else setStep("pay");
           }}
           onContinuePay={() => setStep("receipt")}
@@ -761,12 +805,15 @@ function VenueSection({ venue }: { venue: VenueLocation }) {
 
 function EventCheckout({
   catalog,
-  venue,
   step,
   selectedType,
   quantity,
   total,
-  isFree,
+  extrasTotal,
+  hasMenu,
+  menuItems,
+  menuQty,
+  needsPayment,
   buyerName,
   buyerPhone,
   buyerEmail,
@@ -781,7 +828,9 @@ function EventCheckout({
   onNameChange,
   onPhoneChange,
   onEmailChange,
+  onMenuQtyChange,
   onContinueBuyer,
+  onContinueMenu,
   onContinuePay,
   onPickReceipt,
   onReceiptFile,
@@ -793,7 +842,11 @@ function EventCheckout({
   selectedType?: TicketType;
   quantity: number;
   total: number;
-  isFree: boolean;
+  extrasTotal: number;
+  hasMenu: boolean;
+  menuItems: EventTicketMenuItem[];
+  menuQty: Record<string, number>;
+  needsPayment: boolean;
   buyerName: string;
   buyerPhone: string;
   buyerEmail: string;
@@ -808,13 +861,20 @@ function EventCheckout({
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onEmailChange: (v: string) => void;
+  onMenuQtyChange: (id: string, quantity: number) => void;
   onContinueBuyer: () => void;
+  onContinueMenu: () => void;
   onContinuePay: () => void;
   onPickReceipt: () => void;
   onReceiptFile: (file: File | null) => void;
   onSubmit: () => void;
 }) {
-  const stepIndex = CHECKOUT_STEPS.findIndex((s) => s.id === step);
+  const steps = checkoutSteps(hasMenu, needsPayment);
+  const stepIndex = Math.max(
+    0,
+    steps.findIndex((s) => s.id === step),
+  );
+  const confirmNow = !hasMenu && !needsPayment;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
@@ -851,17 +911,15 @@ function EventCheckout({
       <main className="flex-1 px-5 pb-28 pt-2">
         {step !== "done" && (
           <ol className="mb-8 flex gap-1">
-            {(isFree ? CHECKOUT_STEPS.slice(0, 1) : CHECKOUT_STEPS).map(
-              (s, i) => (
-                <li
-                  key={s.id}
-                  className={cn(
-                    "h-1 flex-1 rounded-full",
-                    i <= stepIndex ? "bg-orange" : "bg-cream/15",
-                  )}
-                />
-              ),
-            )}
+            {steps.map((s, i) => (
+              <li
+                key={s.id}
+                className={cn(
+                  "h-1 flex-1 rounded-full",
+                  i <= stepIndex ? "bg-orange" : "bg-cream/15",
+                )}
+              />
+            ))}
           </ol>
         )}
 
@@ -871,21 +929,29 @@ function EventCheckout({
             phone={buyerPhone}
             email={buyerEmail}
             errors={buyerErrors}
-            isFree={isFree}
+            isFree={!needsPayment && !hasMenu}
             onNameChange={onNameChange}
             onPhoneChange={onPhoneChange}
             onEmailChange={onEmailChange}
           />
         )}
-        {step === "pay" && selectedType && !isFree && (
+        {step === "menu" && (
+          <MenuStep
+            items={menuItems}
+            quantities={menuQty}
+            onQuantityChange={onMenuQtyChange}
+          />
+        )}
+        {step === "pay" && selectedType && needsPayment && (
           <PayStep
             typeName={selectedType.name}
             quantity={quantity}
             total={total}
+            extrasTotal={extrasTotal}
             transfer={catalog.transfer ?? DEFAULT_TICKET_TRANSFER}
           />
         )}
-        {step === "receipt" && !isFree && (
+        {step === "receipt" && needsPayment && (
           <ReceiptStep
             fileInputRef={fileInputRef}
             receiptUrl={receiptUrl}
@@ -909,7 +975,11 @@ function EventCheckout({
           <div className="mx-auto flex max-w-lg items-center justify-between gap-3 lg:justify-end lg:gap-5">
             <div className="min-w-0 text-left lg:text-right">
               <p className="text-[11px] uppercase tracking-wide text-cream/55">
-                {selectedType ? `${quantity} × ${selectedType.name}` : "Total"}
+                {selectedType
+                  ? extrasTotal > 0
+                    ? `${quantity} × ${selectedType.name} + menú`
+                    : `${quantity} × ${selectedType.name}`
+                  : "Total"}
               </p>
               <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
                 {formatTicketPrice(total)}
@@ -919,10 +989,24 @@ function EventCheckout({
               <Button
                 size="lg"
                 className="ticket-orange tracking-wideh-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
-                disabled={isFree && submitting}
+                disabled={confirmNow && submitting}
                 onClick={onContinueBuyer}
               >
-                {isFree
+                {confirmNow
+                  ? submitting
+                    ? "Generando…"
+                    : "Confirmar"
+                  : "Continuar"}
+              </Button>
+            )}
+            {step === "menu" && (
+              <Button
+                size="lg"
+                className="ticket-orange tracking-wideh-12 shrink-0 px-6 text-base font-bold text-navy hover:opacity-90"
+                disabled={!needsPayment && submitting}
+                onClick={onContinueMenu}
+              >
+                {!needsPayment
                   ? submitting
                     ? "Generando…"
                     : "Confirmar"
@@ -971,6 +1055,108 @@ function UnavailableState({
             ? "No encontramos este evento"
             : "Este evento no tiene entradas a la venta"}
       </p>
+    </div>
+  );
+}
+
+function MenuStep({
+  items,
+  quantities,
+  onQuantityChange,
+}: {
+  items: EventTicketMenuItem[];
+  quantities: Record<string, number>;
+  onQuantityChange: (id: string, quantity: number) => void;
+}) {
+  const grouped = useMemo(() => {
+    const comida = items.filter((item) => item.type === "comida");
+    const bebida = items.filter((item) => item.type === "bebida");
+    return [
+      { key: "comida", label: "Comida", list: comida },
+      { key: "bebida", label: "Bebida", list: bebida },
+    ].filter((group) => group.list.length > 0);
+  }, [items]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-display text-2xl font-semibold tracking-tight">
+          ¿Sumás algo del menú?
+        </h2>
+        <p className="mt-1 text-sm text-cream/55">
+          La comida es con reserva previa: pedila ahora y te la preparamos para
+          el evento. Se suma al monto a transferir.
+        </p>
+      </div>
+      {grouped.map((group) => (
+        <section key={group.key} className="space-y-2">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-cream/45">
+            {group.label}
+          </p>
+          <div className="space-y-2">
+            {group.list.map((item) => {
+              const qty = quantities[item.id] || 0;
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-3 py-3",
+                    qty > 0
+                      ? "border-orange/50 bg-orange/10"
+                      : "border-cream/15 bg-cream/[0.04]",
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-cream">
+                      {item.name}
+                    </p>
+                    {item.description ? (
+                      <p className="mt-0.5 truncate text-xs text-cream/50">
+                        {item.description}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-sm font-semibold tabular-nums text-cream">
+                      {formatTicketPrice(item.price)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
+                      disabled={qty <= 0}
+                      onClick={() =>
+                        onQuantityChange(item.id, Math.max(0, qty - 1))
+                      }
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="w-5 text-center text-base font-bold tabular-nums">
+                      {qty}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 bg-navy text-cream hover:bg-navy/90 hover:text-cream"
+                      disabled={qty >= MAX_MENU_QTY}
+                      onClick={() =>
+                        onQuantityChange(
+                          item.id,
+                          Math.min(MAX_MENU_QTY, qty + 1),
+                        )
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -1061,11 +1247,13 @@ function PayStep({
   typeName,
   quantity,
   total,
+  extrasTotal,
   transfer,
 }: {
   typeName: string;
   quantity: number;
   total: number;
+  extrasTotal: number;
   transfer: { alias: string; holder: string };
 }) {
   const [copied, setCopied] = useState(false);
@@ -1090,6 +1278,7 @@ function PayStep({
         </h2>
         <p className="mt-1 text-sm text-cream/55">
           {quantity} × {typeName}
+          {extrasTotal > 0 ? " + menú" : ""}
         </p>
       </div>
       <div className="rounded-2xl border border-cream/15 bg-cream/[0.04] p-6 text-center">
@@ -1227,9 +1416,7 @@ function RecoverTicket({
       setTickets(found);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "No se pudo buscar la entrada";
+        error instanceof Error ? error.message : "No se pudo buscar la entrada";
       if (message.includes("No encontramos")) {
         setTickets([]);
         return;

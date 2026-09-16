@@ -26,6 +26,25 @@ export interface VenueLocation {
   lng?: number | null;
 }
 
+export interface EventTicketMenuItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  type: "comida" | "bebida";
+}
+
+export interface TicketMenuSelection {
+  menu_item_id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  type: "comida" | "bebida";
+  quantity: number;
+}
+
 export interface EventTicketCatalog {
   event_id: string;
   slug?: string | null;
@@ -39,6 +58,7 @@ export interface EventTicketCatalog {
   venue?: VenueLocation;
   transfer?: TicketTransfer;
   ticket_types: TicketType[];
+  menu_items?: EventTicketMenuItem[];
 }
 
 export interface Ticket {
@@ -55,4 +75,5 @@ export interface Ticket {
   status: TicketStatus;
   purchase_date: string;
   checked_in_at?: string | null;
+  menu_items?: TicketMenuSelection[];
 }
