@@ -24,7 +24,8 @@ export function ticketMenuAmount(
 ): number {
   if (!items?.length) return 0;
   return items.reduce(
-    (sum, item) => sum + item.price * Math.max(0, quantities[item.id] || 0),
+    (sum, item) =>
+      sum + Number(item.price) * Math.max(0, quantities[item.id] || 0),
     0,
   );
 }

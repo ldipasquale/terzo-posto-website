@@ -71,7 +71,7 @@ function checkoutSteps(hasMenu: boolean, needsPayment: boolean) {
     { id: "buyer", label: "Datos" },
   ];
   if (hasMenu) steps.push({ id: "menu", label: "Menú" });
-  if (needsPayment) {
+  if (needsPayment || hasMenu) {
     steps.push({ id: "pay", label: "Pago" });
     steps.push({ id: "receipt", label: "Comprobante" });
   }
@@ -201,7 +201,8 @@ export function PublicTicketPurchasePage() {
   const extrasTotal = ticketMenuAmount(menuItems, menuQty);
   const ticketTotal =
     selectedType && quantity > 0 ? selectedType.price * quantity : 0;
-  const isFree = isFreeTicketType(selectedType);
+  const isFreeTicket = isFreeTicketType(selectedType);
+  const fullyFree = isFreeTicket && !hasMenu;
   const total = ticketTotal;
   const checkoutTotal = ticketTotal + extrasTotal;
   const needsPayment = checkoutTotal > 0;
@@ -317,7 +318,8 @@ export function PublicTicketPurchasePage() {
           remaining={remaining}
           total={total}
           fromPrice={fromPrice}
-          isFree={isFree}
+          isFree={fullyFree}
+          hasMenu={hasMenu}
           onSelect={(type) => {
             if (salesClosed) return;
             const left = remainingQuantity(type);
@@ -378,13 +380,16 @@ export function PublicTicketPurchasePage() {
           }}
           onContinueBuyer={() => {
             if (!validateBuyer()) return;
-            if (hasMenu) setStep("menu");
-            else if (!needsPayment) void handleSubmit();
+            if (hasMenu) {
+              setStep("menu");
+              return;
+            }
+            if (!needsPayment) void handleSubmit();
             else setStep("pay");
           }}
           onContinueMenu={() => {
-            if (!needsPayment) void handleSubmit();
-            else setStep("pay");
+            if (needsPayment) setStep("pay");
+            else void handleSubmit();
           }}
           onContinuePay={() => setStep("receipt")}
           onPickReceipt={() => fileInputRef.current?.click()}
@@ -486,6 +491,7 @@ function EventLanding({
   total,
   fromPrice,
   isFree,
+  hasMenu = false,
   onSelect,
   onQuantityChange,
   onBuy,
@@ -507,6 +513,7 @@ function EventLanding({
   total: number;
   fromPrice: number | null;
   isFree: boolean;
+  hasMenu?: boolean;
   onSelect: (type: TicketType) => void;
   onQuantityChange: (n: number) => void;
   onBuy: () => void;
@@ -750,6 +757,11 @@ function EventLanding({
                 <p className="text-xl font-semibold tabular-nums text-cream lg:text-2xl">
                   {formatTicketPrice(selected ? total : (fromPrice ?? 0))}
                 </p>
+                {hasMenu ? (
+                  <p className="text-[11px] text-cream/45">
+                    Podés sumar comida con reserva previa
+                  </p>
+                ) : null}
               </div>
               <Button
                 size="lg"
@@ -942,7 +954,7 @@ function EventCheckout({
             onQuantityChange={onMenuQtyChange}
           />
         )}
-        {step === "pay" && selectedType && needsPayment && (
+        {step === "pay" && selectedType && (
           <PayStep
             typeName={selectedType.name}
             quantity={quantity}
@@ -951,7 +963,7 @@ function EventCheckout({
             transfer={catalog.transfer ?? DEFAULT_TICKET_TRANSFER}
           />
         )}
-        {step === "receipt" && needsPayment && (
+        {step === "receipt" && (
           <ReceiptStep
             fileInputRef={fileInputRef}
             receiptUrl={receiptUrl}
@@ -1006,11 +1018,11 @@ function EventCheckout({
                 disabled={!needsPayment && submitting}
                 onClick={onContinueMenu}
               >
-                {!needsPayment
-                  ? submitting
+                {needsPayment
+                  ? "Continuar"
+                  : submitting
                     ? "Generando…"
-                    : "Confirmar"
-                  : "Continuar"}
+                    : "Confirmar"}
               </Button>
             )}
             {step === "pay" && (
