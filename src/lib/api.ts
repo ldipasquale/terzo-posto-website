@@ -22,17 +22,15 @@ export async function getPublicEvent(
 
 export async function purchasePublicTicket(input: {
   slug: string;
-  ticket_type_id: string;
-  quantity: number;
+  lines: Array<{ ticket_type_id: string; quantity: number }>;
   buyer_name: string;
   buyer_phone: string;
   buyer_email: string;
   receipt?: File | null;
   menu_items?: Array<{ menu_item_id: string; quantity: number }>;
-}): Promise<Ticket> {
+}): Promise<Ticket[]> {
   const form = new FormData();
-  form.append("ticket_type_id", input.ticket_type_id);
-  form.append("quantity", String(input.quantity));
+  form.append("lines", JSON.stringify(input.lines));
   form.append("buyer_name", input.buyer_name);
   form.append("buyer_phone", input.buyer_phone);
   form.append("buyer_email", input.buyer_email);
@@ -46,7 +44,12 @@ export async function purchasePublicTicket(input: {
     { method: "POST", body: form },
   );
   if (!response.ok) throw new Error(await readError(response));
-  return response.json();
+  const body = (await response.json()) as { tickets?: Ticket[] } | Ticket;
+  if (Array.isArray((body as { tickets?: Ticket[] }).tickets)) {
+    return (body as { tickets: Ticket[] }).tickets;
+  }
+  if (body && typeof body === "object" && "id" in body) return [body];
+  return [];
 }
 
 export async function lookupPublicTickets(
