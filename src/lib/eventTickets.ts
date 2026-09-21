@@ -52,15 +52,8 @@ export function sortTicketTypes(types: TicketType[]): TicketType[] {
   });
 }
 
-export function isTicketTypeSelectable(
-  type: TicketType,
-  types: TicketType[],
-): boolean {
-  if (remainingQuantity(type) <= 0) return false;
-  const available = types.filter((t) => remainingQuantity(t) > 0);
-  if (available.length <= 1) return true;
-  const minPrice = Math.min(...available.map((t) => t.price));
-  return type.price === minPrice;
+export function isTicketTypeSelectable(type: TicketType): boolean {
+  return remainingQuantity(type) > 0;
 }
 
 export function todayYmdBuenosAires(): string {

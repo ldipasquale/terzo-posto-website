@@ -631,10 +631,7 @@ function EventLanding({
                   {sortTicketTypes(catalog.ticket_types).map((type) => {
                     const left = remainingQuantity(type);
                     const soldOut = left <= 0;
-                    const selectable = isTicketTypeSelectable(
-                      type,
-                      catalog.ticket_types,
-                    );
+                    const selectable = isTicketTypeSelectable(type);
                     const isSelected = selectable && type.id === selectedTypeId;
                     const unavailable = !selectable;
                     return (
